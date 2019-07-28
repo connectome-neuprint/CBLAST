@@ -147,6 +147,7 @@ def _compute_vi(labels, gt):
     # false merge VI
     merge_vi = 0
     gtvi = {}
+    splitvi = {}
 
     for label, group in label_groups.items():
         tot = 0
@@ -170,7 +171,10 @@ def _compute_vi(labels, gt):
             split_vi += info
             if label not in gtvi:
                 gtvi[label] = 0
+            if label not in splitvi:
+                splitvi[label] = 0
             gtvi[label] += info
+            splitvi[label] += info
 
     # normalize gtvi
     
@@ -181,15 +185,18 @@ def _compute_vi(labels, gt):
             gtsize[label] = 0
         gtsize[label] += 1
 
-    vitable = np.zeros((len(gtvi), 2))
+    vitable = np.zeros((len(gtvi), 4))
     iter1 = 0
     indices = []
     for label, vi in gtvi.items():
         normvi = vi / gtsize[label]
-        vitable[iter1] = [vi, normvi]
+        split = 0
+        if label in splitvi:
+            split = splitvi[label]
+        vitable[iter1] = [vi, normvi, vi-split, split]
         indices.append(label)
         iter1 += 1
-    final_table = pd.DataFrame(vitable, index=indices, columns=["VI", "VI-norm"])
+    final_table = pd.DataFrame(vitable, index=indices, columns=["VI", "VI-norm", "false merge", "false split"])
 
     return merge_vi, split_vi, final_table
 
