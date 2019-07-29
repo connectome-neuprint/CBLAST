@@ -61,12 +61,33 @@ class HCluster:
 
         return bestres
 
+    def get_partitions(self, num_parts):
+        """Returns cluster partitions for specified number of clusters.
+
+        Args:
+            num_parts (int): number of cluster partitions
+        Returns:
+            (dict): {cluster id: [body1, body2,...]}
+        """
+        from scipy.cluster.hierarchy import cut_tree
+        partitions = cut_tree(self.cluster, n_clusters=num_parts)
+        res = {}
+
+        labels = list(partitions[:,0])
+        for idx, label in enumerate(labels):
+            if label not in res:
+                res[label] = []
+            res[label].append(self.labels[idx])
+        return res
+
+
 class KCluster:
     """Simple wrapper class for cluster output to preserve labeling.
     """
-    def __init__(self, cluster, labels):
+    def __init__(self, cluster, labels, features):
         self.cluster = cluster
         self.labels = labels
+        self.features = features
 
     def compute_vi(self, gtmap):
         """Return variation of information based on provided ground truth maps.
@@ -77,9 +98,39 @@ class KCluster:
             (float64, float64, dataframe): merge vi, split vi, bodyids and score
         """
 
-
         return _vi_wrapper(self.cluster.labels_, self.labels, gtmap) 
 
+    def get_partitions(self):
+        """Returns cluster partitions where the first element is the closest to center.
+
+        Returns:
+            (dict): {cluster id: [body1, body2,...]}
+        """
+        res = {}
+        
+        for idx, label in enumerate(self.cluster.labels_):
+            if label not in res:
+                res[label] = []
+            res[label].append(idx)
+
+        finalres = {}
+        # find representative element for each cluster
+        for idx in range(0, len(self.cluster.cluster_centers_)):
+            cf = self.cluster.cluster_centers_[idx] 
+            mindist = 999999999999999999999
+            minidx = -1
+            for idx2 in res[idx]:
+                dist = np.linalg.norm(self.features.iloc[idx2].values-cf)
+                if dist < mindist:
+                    mindist = dist
+                    minidx = idx2 
+            
+            finalres[idx] = [self.labels[minidx]]
+            for idx2 in res[idx]:
+                if idx2 != minidx:
+                    finalres[idx].append(self.labels[idx2])
+
+        return finalres
 
 def _vi_wrapper(clabels, indices, gtmap):
     # determine mapping of index to type
@@ -232,7 +283,7 @@ def kmeans_cluster(features, num_clusters):
     """
     from sklearn.cluster import KMeans
 
-    return KCluster(KMeans(n_clusters=num_clusters, random_state=0).fit(features), features.index.values.tolist())
+    return KCluster(KMeans(n_clusters=num_clusters, random_state=0).fit(features), features.index.values.tolist(), features)
 
 
 def sort_distance_matrix(distance):
