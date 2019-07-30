@@ -22,7 +22,7 @@ def compute_distance_matrix(features):
     from scipy.spatial.distance import squareform
     dist_matrix = squareform(pdist(features.values))
 
-    return pd.DataFrame(dist_matrix, index=features.index.values.tolist(), columns=features.columns.values.tolist())
+    return pd.DataFrame(dist_matrix, index=features.index.values.tolist(), columns=features.index.values.tolist())
 
 class HCluster:
     """Simple wrapper class for cluster output to preserve labeling.
