@@ -67,18 +67,19 @@ class HCluster:
         Args:
             num_parts (int): number of cluster partitions
         Returns:
-            (dict): {cluster id: [body1, body2,...]}
+            (dict, dataframe): {cluster id: [body1, body2,...]}, "bodyid", "cluster id"
         """
         from scipy.cluster.hierarchy import cut_tree
         partitions = cut_tree(self.cluster, n_clusters=num_parts)
         res = {}
 
         labels = list(partitions[:,0])
+        mapping = pd.DataFrame(list(zip(self.labels, labels)), columns=["bodyid", "type"])
         for idx, label in enumerate(labels):
             if label not in res:
                 res[label] = []
             res[label].append(self.labels[idx])
-        return res
+        return (res, mapping)
 
 
 class KCluster:
@@ -104,7 +105,7 @@ class KCluster:
         """Returns cluster partitions where the first element is the closest to center.
 
         Returns:
-            (dict): {cluster id: [body1, body2,...]}
+            (dict, dataframe): {cluster id: [body1, body2,...]}, "bodyid", "cluster id"
         """
         res = {}
         
@@ -112,6 +113,8 @@ class KCluster:
             if label not in res:
                 res[label] = []
             res[label].append(idx)
+        
+        mapping = pd.DataFrame(list(zip(self.labels, self.cluster.labels_)), columns=["bodyid", "type"])
 
         finalres = {}
         # find representative element for each cluster
@@ -130,7 +133,7 @@ class KCluster:
                 if idx2 != minidx:
                     finalres[idx].append(self.labels[idx2])
 
-        return finalres
+        return (finalres, mapping)
 
 def _vi_wrapper(clabels, indices, gtmap):
     # determine mapping of index to type
