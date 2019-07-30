@@ -15,10 +15,11 @@ Install conda.
     % conda create -n typecluster
     % conda install scipy scikit-learn jupyter hvplot bokeh neuprint-python -n typecluster -c conda-forge -c flyem-forge
     % source activate typecluster
-    % export NEUPRINT_APPLICATION_CREDENTIALS=YOURTOKEN 
-    % jupyter notebook # from the type cluster directory
+    % python setup.py install
+    % export NEUPRINT_APPLICATION_CREDENTIALS=YOURTOKEN
+    % jupyter notebook 
 
-To use the library, just import typecluster.
+To use the library, import typecluster.
 
 # todo
 
