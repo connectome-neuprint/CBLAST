@@ -52,6 +52,9 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
         else:
             p = figure(title="Ground truth (v1)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
             p2 = figure(title="Ground truth (v2)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
+    else:
+            p = figure(title="Features (v1)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
+            p2 = figure(title="Features (v2)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
 
     # create bokeh data sources
     coordtable = pd.DataFrame(data={"bodyid": features.index.values, "x": dembed[:,0], "y": dembed[:,1]})
@@ -91,8 +94,9 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
             p4.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typecluster"] == celltype]))
 
     if groundtruth is None and clusters is None:
-        p.square("x", "y", size=10, color=cval, alpha=0.8, legend=celltype, muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable))
-        p2.square("x", "y", size=10, color=cval, alpha=0.8, legend=celltype, muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2))
+        cval = next(colors)
+        p.square("x", "y", size=10, color=cval, alpha=0.8, source=ColumnDataSource(coordtable))
+        p2.square("x", "y", size=10, color=cval, alpha=0.8, source=ColumnDataSource(coordtable2))
 
     if groundtruth is not None and clusters is not None:
         p.add_tools( HoverTool(tooltips= [("body id","@bodyid"), ("type (gt)","@typegt"), ("type (cluster)","@typecluster")]))
@@ -108,6 +112,7 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
         show(grid)
     elif groundtruth is None and clusters is None:
         #grid = gridplot([[p, p2]])
+        p.add_tools( HoverTool(tooltips= [("body id","@bodyid")]))
         grid = gridplot([[p]])
         show(grid)
     else:

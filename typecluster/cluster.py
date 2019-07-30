@@ -7,7 +7,6 @@ import json
 import numpy as np
 import pandas as pd
 
-
 def compute_distance_matrix(features):
     """Compute a distance matrix between the neurons.
 
