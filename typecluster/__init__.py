@@ -1,3 +1,3 @@
-from .cluster import * 
-from .features import * 
-from .view import * 
+from . import cluster
+from . import features 
+from . import view
