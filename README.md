@@ -10,12 +10,13 @@ will aid the in creation of even better features.
 
 # installation and running
 
-Install conda.
+Install [conda](https://docs.conda.io/en/latest/miniconda.html).
 
     % conda create -n typecluster
     % conda install scipy scikit-learn jupyter hvplot bokeh neuprint-python -n typecluster -c conda-forge -c flyem-forge
     % source activate typecluster
-    % python setup.py install
+    % git clone https://github.com/connectome-neuprint/typecluster.git
+    % cd typecluster; python setup.py install
     % export NEUPRINT_APPLICATION_CREDENTIALS=YOURTOKEN
     % jupyter notebook 
 
