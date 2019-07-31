@@ -32,10 +32,12 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
     else:
         output_file(htmlfile)
 
-    
-    # try two different TSNE thresholds
-    dembed = TSNE(n_components=2, perplexity=30).fit_transform(features)
-    dembed_v2 = TSNE(n_components=2, perplexity=10).fit_transform(features)
+    xsize, ysize = features.shape
+    dembed = dembed_v2 = features.values
+    if ysize > 2: # only run tsne if a reduction is needed
+        # try two different TSNE thresholds
+        dembed = TSNE(n_components=2, perplexity=30).fit_transform(features)
+        dembed_v2 = TSNE(n_components=2, perplexity=10).fit_transform(features)
 
     #colors has a list of colors which can be used in plots
     colors = itertools.cycle(palette[20])
@@ -81,14 +83,14 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
 
     for celltype in gtypes:
         cval = next(colors)
-        p.square("x", "y", size=10, color=cval, alpha=0.8, legend=celltype, muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["typegt"] == celltype]))
-        p2.square("x", "y", size=10, color=cval, alpha=0.8, legend=celltype, muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typegt"] == celltype]))
+        p.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["typegt"] == celltype]))
+        p2.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typegt"] == celltype]))
 
     for celltype in ctypes:
         cval = next(colors)
         if groundtruth is None:
-            p.square("x", "y", size=10, color=cval, alpha=0.8, legend=celltype, muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["typecluster"] == celltype]))
-            p2.square("x", "y", size=10, color=cval, alpha=0.8, legend=celltype, muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typecluster"] == celltype]))
+            p.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["typecluster"] == celltype]))
+            p2.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typecluster"] == celltype]))
         else:
             p3.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["typecluster"] == celltype]))
             p4.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typecluster"] == celltype]))
