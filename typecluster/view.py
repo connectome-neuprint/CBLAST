@@ -10,7 +10,7 @@ import itertools
 import pandas as pd
 
 
-def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=None):
+def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=None, tsne=False):
     """Plot each neuron on a 2D scatter plot, which should reveal clusters.
 
     Args:
@@ -18,6 +18,7 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
         clusters (dataframe): body id index, "type"
         groundtruth (dataframe): body id index, "type"
         htmlfile (str): save data as html file instead of displaying in notebook
+        tsne (boolean): use tsne instead of UMAP
 
     Note: features should be reduce using PCA first (ideally <500 features).
     Clusters and ground truth should have a column "type" and the same
@@ -35,9 +36,17 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
     xsize, ysize = features.shape
     dembed = dembed_v2 = features.values
     if ysize > 2: # only run tsne if a reduction is needed
-        # try two different TSNE thresholds
-        dembed = TSNE(n_components=2, perplexity=30).fit_transform(features)
-        dembed_v2 = TSNE(n_components=2, perplexity=10).fit_transform(features)
+        if tsne:
+            # try two different TSNE thresholds
+            dembed = TSNE(n_components=2, perplexity=30).fit_transform(features)
+            dembed_v2 = TSNE(n_components=2, perplexity=10).fit_transform(features)
+        else:
+            import umap
+            reducer = umap.UMAP()
+            dembed = reducer.fit_transform(features)
+            reducer2 = umap.UMAP()
+            dembed_v2 = reducer2.fit_transform(features)
+
 
     #colors has a list of colors which can be used in plots
     colors = itertools.cycle(palette[20])
