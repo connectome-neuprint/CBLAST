@@ -607,9 +607,9 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
 
     featurenames = []
     for input in commonin:
-        featurenames.append(input)
+        featurenames.append(str(input)+"=>")
     for output in commonout:
-        featurenames.append(output)
+        featurenames.append(str(output)+"<=")
 
     features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames) 
     features_sz = pd.DataFrame(features_size_arr, index=neuronlist, columns=["post", "pre"]) 
