@@ -638,4 +638,40 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
 
     return features, features_sz
 
+def find_max_differences(features, body1, body2, numfeatures = 10):
+    """Find features that are most different for body1 and body2.
 
+    Args:
+        features (dataframe): features for a set of bodies
+        body1 (int): id for body/neuron
+        body2 (int): id for body/neuron
+        numfeatures (int): number of features to return for largest agreements and differences
+    Return:
+        (dataframe): Show X largest values and X largest differences
+
+    Note: should examine features before PCA or other domain reduction.
+    """
+
+    b1feat = features.loc[body1]
+    b2feat = features.loc[body2]
+
+    # find biggest differences and the largest combined value
+    diff = abs(b1feat-b2feat).sort_values(ascending=False)                                                           
+    comb = (b1feat+b2feat).sort_values(ascending=False)                                                              
+
+    if len(diff) < numfeatures//2:                                                                                   
+        numfeatures = len(diff)//2
+
+    # restrict dataframe to the two relevant bodies                                                                          
+    features_restr = features.loc[[body1, body2]]
+    
+    diff_feat = abs(b1feat-b2feat)
+    diff_feat.name = "diff"
+    features_restr = features_restr.append(diff_feat)
+
+    # restrict featuress to most interesting
+    restr = list(diff.index[0:numfeatures])
+    restr.extend(list(comb.index[0:numfeatures]))
+    features_restr = features_restr[restr]                                                                                                           
+    
+    return features_restr

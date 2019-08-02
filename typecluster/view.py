@@ -8,6 +8,7 @@ from bokeh.models import ColumnDataSource, HoverTool
 from bokeh.palettes import Category20 as palette
 import itertools
 import pandas as pd
+import hvplot.pandas
 
 
 def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=None, tsne=False):
@@ -141,3 +142,68 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
         #grid = gridplot([[p, p2]])
         grid = gridplot([[p]])
         show(grid)
+
+
+def features_compareheatmap(features):
+    """Show heatmap for the provided features.
+
+    Arg:
+        features (dframe): neuron features
+    Returns:
+        heatmap showing the features
+
+    Note: should call on non-pca features but should restrict to most important features.
+    """
+
+    featuresx = features.copy()
+
+    from bokeh.models import LinearColorMapper, BasicTicker, PrintfTickFormatter, ColorBar
+
+    featuresx.index.name = "bodyid"
+    featuresx.columns.name = "feature"
+
+    featuresx.index = featuresx.index.map(str)
+    bodyid = featuresx.index.values.tolist()
+    feature = featuresx.columns.values.tolist()
+
+    # reshape to 1D array or rates with a month and year for each row.
+    df = pd.DataFrame(featuresx.stack(), columns=['score']).reset_index()
+    return df.hvplot.heatmap(x="feature", y="bodyid", C="score", colorbar=True, width=900, height=400)
+
+
+    """
+        # this is from https://bokeh.pydata.org/en/latest/docs/gallery/unemployment.html
+        colors = ["#75968f", "#a5bab7", "#c9d9d3", "#e2e2e2", "#dfccce", "#ddb7b1", "#cc7878", "#933b41", "#550b1d"]
+
+    reset_output()
+    output_notebook()
+    mapper = LinearColorMapper(palette=colors, low=df.score.min(), high=df.score.max())
+
+    TOOLS = "hover,save,pan,box_zoom,reset,wheel_zoom"
+
+    p = figure(title="features".format(feature[0], feature[-1]),
+               x_range=feature, y_range=list(reversed(bodyid)),
+               x_axis_location="above", plot_width=900, plot_height=400,
+               tools=TOOLS, toolbar_location='below',
+               tooltips=[('data', '@bodyid: @feature'), ('score', '@score')])
+
+    from math import pi
+    p.grid.grid_line_color = None
+    p.axis.axis_line_color = None
+    p.axis.major_tick_line_color = None
+    p.axis.major_label_text_font_size = "5pt"
+    p.axis.major_label_standoff = 0
+    p.xaxis.major_label_orientation = pi / 3
+
+    p.rect(x="feature", y="bodyid", width=1, height=1,
+           source=df,
+           fill_color={'field': 'score', 'transform': mapper},
+           line_color=None)
+
+    color_bar = ColorBar(color_mapper=mapper, major_label_text_font_size="5pt",
+                         ticker=BasicTicker(desired_num_ticks=len(colors)),
+                         formatter=PrintfTickFormatter(format="%d"),
+                         label_standoff=6, border_line_color=None, location=(0, 0))
+    p.add_layout(color_bar, 'right')
+    show(p)
+    """
