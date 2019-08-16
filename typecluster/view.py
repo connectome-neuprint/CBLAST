@@ -9,6 +9,8 @@ from bokeh.palettes import Category20 as palette
 import itertools
 import pandas as pd
 import hvplot.pandas
+import plotly
+import plotly.graph_objects as go
 
 
 def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=None, tsne=False):
@@ -207,3 +209,61 @@ def features_compareheatmap(features):
     p.add_layout(color_bar, 'right')
     show(p)
     """
+
+def features_radarchart(features, clusters=None, htmlfile=None):
+    """Show radar chart for the provided features.
+
+    Arg:
+        features (dframe): neuron features
+        clusterinfo (dframe): 
+    Returns:
+        heatmap showing the features
+
+    Note: should call on non-pca features but should restrict to most important features.
+    """
+    fig = go.Figure()
+    
+    if clusters is None:
+        categories = list(features.columns)
+        
+        for index, row in features.iterrows():
+            fig.add_trace(go.Scatterpolar(
+                r=row.values,
+                theta=categories,
+                fill='toself',
+                text=index,
+                name=index
+            ))
+    else:
+        clusters = clusters.set_index('bodyid')
+
+        featuresx = pd.concat([features, clusters], axis=1)
+        featuresx = featuresx.sort_values(by=['type'])
+        
+        categories = list(featuresx.columns)
+        categories.remove('type')
+        
+        for index, row in featuresx.iterrows():
+            fig.add_trace(go.Scatterpolar(
+                r=row.values,
+                theta=categories,
+                fill='toself',
+                text=index,
+                name=row['type']
+            ))
+    
+    fig.update_traces(
+        hoverinfo='text')
+    fig.update_layout(
+        width = 900, 
+        height = 800,
+    polar=dict(
+        radialaxis=dict(visible=True)
+        ),
+    showlegend=True
+    )
+    
+    if htmlfile is not None:
+        plotly.offline.plot(fig, filename=htmlfile)
+
+    fig.show()
