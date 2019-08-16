@@ -630,8 +630,12 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
         features_norm = normalize(features_arr, axis=1, norm='l2')
         scaledfeatures_norm = normalize(scaledfeatures, axis=1, norm='l2')
 
+        scaled_featnames=[]
+        for name in featurenames:
+            scaled_featnames.append(str(name)+"-2")
+
         features_normdf = pd.DataFrame(features_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
-        scaledfeatures_normdf = pd.DataFrame(scaledfeatures_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
+        scaledfeatures_normdf = pd.DataFrame(scaledfeatures_norm, index=features.index.values.tolist(), columns=scaled_featnames)
         aux_scaledfeaturesdf = pd.DataFrame(aux_scaledfeatures, index=features.index.values.tolist(), columns=features_sz.columns.values.tolist())
 
         return combine_features([features_normdf, scaledfeatures_normdf, aux_scaledfeaturesdf], wgts)
@@ -674,4 +678,25 @@ def find_max_differences(features, body1, body2, numfeatures = 10):
     restr.extend(list(comb.index[0:numfeatures]))
     features_restr = features_restr[restr]                                                                                                           
     
+    return features_restr
+
+def find_max_variance(features, numfeatures=40):
+    """Find features with the most variance
+
+    Args:
+        features (dataframe): features for a set of bodies
+        numfeatures (int): number of features to return with the most variance
+    Return:
+        (dataframe): Show X most variance
+
+    Note: should examine features before PCA or other domain reduction.
+    """
+    min_val = features.min()
+    max_val = features.max()
+    
+    diff = abs(max_val-min_val).sort_values(ascending=False)
+    
+    restr = list(diff.index[0:numfeatures])
+    features_restr = features[restr]
+
     return features_restr
