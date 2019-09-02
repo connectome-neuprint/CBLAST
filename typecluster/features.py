@@ -133,7 +133,7 @@ def extract_roioverlap_features(neuronlist, dataset, npclient, roilist=None, pre
 
 
 
-def extract_projection_features(neuronlist, dataset, npclient, roilist=None, preprocess=True, wgts=[0.25,0.6,0.15]):
+def extract_projection_features(neuronlist, dataset, npclient, roilist=None, preprocess=True, wgts=[0.25,0.6,0.15], leftright=False):
     """Extract features from a list of neurons.
 
     This function generates features based on ROI connectivity pattern
@@ -146,6 +146,7 @@ def extract_projection_features(neuronlist, dataset, npclient, roilist=None, pre
         roilist (list): custom list of ROIs to use
         preprocess (boolean): if true, features produced by the algorithm are combined in weighted manner
         wgts (list): a list of weights for each feature set (unscaled vs scaled vs size features)
+        leftright (boolean): true to treat left and right ROIs as symmetric
     Returns:
         (dataframe, dataframe): A tuple containing projection features
         for each body id and pre and post size per body id (only one df returned if preprocess is true)
@@ -161,6 +162,16 @@ def extract_projection_features(neuronlist, dataset, npclient, roilist=None, pre
     Note: Current queries limit partner connections to those that are traced or leaves.
 
     """
+
+    # if left/right symmetry map ROIs to common name
+    roi2roi = {}
+    if roilist is not None and leftright:
+        for roi in roilist:
+            troi = roi.replace("(L)", "")
+            troi = troi.replace(" (right)", "")
+            troi = troi.replace(" (left)", "")
+            roi2roi[roi] = troi
+
 
     # >= give significant connections that should be weighted in the connectome
     # when normalizing across secondary connections, only consider those above the threshold
@@ -370,18 +381,74 @@ def extract_projection_features(neuronlist, dataset, npclient, roilist=None, pre
 
     # construct dataframes for the features
     featurenames = []
+    equivclasses = {}
+
     for froi in inrois:
+        if len(roi2roi) > 0:
+            froi = roi2roi[froi]
+
         for sroi in secrois:
-            featurenames.append(froi + "<=" + "(" + sroi +"<=)")
+            key = froi + "<=" + "(" + sroi +"<=)"
+            if len(roi2roi) > 0:
+                sroi = roi2roi[sroi]
+                key = froi + "<=" + "(" + sroi +"<=)"
+                if key in equivclasses:
+                    newkey = key + "-" + str(len(equivclasses[key]))
+                    equivclasses[key].append(newkey)
+                    key = newkey
+                else:
+                    equivclasses[key] = [key]
+            featurenames.append(key)
         for sroi in secrois:
-            featurenames.append(froi + "<=" + "(" + sroi +"=>)")
+            key = froi + "<=" + "(" + sroi + "=>)"
+            if len(roi2roi) > 0:
+                sroi = roi2roi[sroi]
+                key = froi + "<=" + "(" + sroi +"=>)"
+                if key in equivclasses:
+                    newkey = key + "-" + str(len(equivclasses[key]))
+                    equivclasses[key].append(newkey)
+                    key = newkey
+                else:
+                    equivclasses[key] = [key]
+            featurenames.append(key)
     for froi in outrois:
+        if len(roi2roi) > 0:
+            froi = roi2roi[froi]
+        
         for sroi in secrois:
-            featurenames.append(froi + "=>" + "(" + sroi +"<=)")
+            key = froi + "=>" + "(" + sroi +"<=)"
+            if len(roi2roi) > 0:
+                sroi = roi2roi[sroi]
+                key = froi + "=>" + "(" + sroi +"<=)"
+                if key in equivclasses:
+                    newkey = key + "-" + str(len(equivclasses[key]))
+                    equivclasses[key].append(newkey)
+                    key = newkey
+                else:
+                    equivclasses[key] = [key]
+            featurenames.append(key)
         for sroi in secrois:
-            featurenames.append(froi + "=>" + "(" + sroi +"=>)")
+            key = froi + "=>" + "(" + sroi + "=>)"
+            if len(roi2roi) > 0:
+                sroi = roi2roi[sroi]
+                key = froi + "=>" + "(" + sroi +"=>)"
+                if key in equivclasses:
+                    newkey = key + "-" + str(len(equivclasses[key]))
+                    equivclasses[key].append(newkey)
+                    key = newkey
+                else:
+                    equivclasses[key] = [key]
+            featurenames.append(key)
     
     features = pd.DataFrame(featurearray, index=neuronlist, columns=featurenames) 
+    
+    if len(equivclasses):
+        equivlists = []
+        for key, arr in equivclasses.items():
+            equivlists.append(arr)
+        
+        features = sort_equiv_features(features, equivlists)
+    
     features_sz = pd.DataFrame(featureszarray, index=neuronlist, columns=["post", "pre"]) 
    
     if preprocess:
@@ -700,3 +767,22 @@ def find_max_variance(features, numfeatures=40):
     features_restr = features[restr]
 
     return features_restr
+
+def _sort_equiv_features(features, equivlists):
+    """Sort related features from big to small.
+    """
+   
+    for idx, row in res.iterrows():
+        for group in equivlists:
+            res = list(row[group])
+            res.sort()
+            res.reverse()
+            row[group] = res
+    return features
+
+
+
+
+
+
+
