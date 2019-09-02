@@ -7,6 +7,28 @@ import json
 import numpy as np
 import pandas as pd
 
+def save_features(features, filename):
+    """Save features to disk.
+    
+    Args:
+        features (dataframe): features for a set of bodies (body ids should be the index)
+        filename (str): name of file
+    """
+
+    features.to_feature(filename)
+
+def load_features(filename):
+    """Load features from disk.
+    
+    Args:
+        filename (str): name of file
+    Returns:
+        dataframe: features for a set of bodies
+    """
+
+    return pd.read_feather(filename, columns=None, use_threads=True)
+
+
 def extract_roioverlap_features(neuronlist, dataset, npclient, roilist=None, preprocess=True, wgts=[0.25,0.6,0.15]):
     """Extract simple ROI overlap features. 
 
