@@ -54,7 +54,7 @@ def report_diffs(self, part1, part2, features1 = None, features2 = None)
                         v1 = features2.loc[bodyids[iter1]].values
                         v2 = features2.loc[bodyids[iter2]].values
                         diffvec = (v1-v2)**2
-                        diff = diffvec.sum()**(1/2)
+                        diff = (diffvec.sum())**(1/2)
                     falsepart1.append((diff, bodyids[iter1], bodyids[iter2]))
 
     # get part2 fragments
@@ -73,7 +73,7 @@ def report_diffs(self, part1, part2, features1 = None, features2 = None)
                         v1 = features1.loc[bodyids[iter1]].values
                         v2 = features1.loc[bodyids[iter2]].values
                         diffvec = (v1-v2)**2
-                        diff = diffvec.sum()**(1/2)
+                        diff = (diffvec.sum())**(1/2)
                     falsepart2.append((diff, bodyids[iter1], bodyids[iter2]))
                   
     falsepart1.sort()
@@ -120,16 +120,69 @@ class HCluster:
 
         return bestres
 
+    def _get_max_dist(self, res):
+        """Gets max distance between features in the same cluster.
+
+        Args:
+            res (dict): cluster id -> [body1, body2, ... ]
+        Returns:
+            (float, tuple): maximum distance between bodies in a cluster
+        """
+        max_dist = 0
+        max_pair = None
+        for idx, group in res.items():
+            for iter1 in range(len(group)):
+                for iter2 in range(iter1+1, len(group)):
+                    v1 = self.features.loc[group[iter1]].values
+                    v2 = self.features.loc[group[iter2]].values
+                    diffvec = (v1-v2)**2
+                    diff = (diffvec.sum())**(1/2)
+                    if diff > max_dist:
+                        max_dist = diff
+                        max_pair = (group[iter1], group[iter2])
+        return max_dist, max_pair
+
+    def get_partitions_dist_constraint(self, dist):
+        """Returns cluster partitions for the specified distance constraint.
+
+        Args:
+            dist (float): maximum distance to allow between bodies in a cluter 
+        Returns:
+            (dict, dataframe, float, tuple): {cluster id: [body1, body2,...]}, "bodyid", "cluster id",
+            distance between farthest bodies, farthest bodies in the same cluster
+        """
+        from scipy.cluster.hierarchy import cut_tree
+
+        previous_result = None
+        partitions = cut_tree(self.cluster)
+        for colid in range(0, len(partitions[0,:])):
+            labels = list(partitions[:,colid])
+            mapping = pd.DataFrame(list(zip(self.labels, labels)), columns=["bodyid", "type"])
+            res = {}
+
+            for idx, label in enumerate(labels):
+                if label not in res:
+                    res[label] = []
+                res[label].append(self.labels[idx])
+        
+            max_dist, max_pair = self._get_max_dist(res)
+            if max_dist > dist:
+                break
+            previous_result = (res, mapping, max_dist, max_pair) 
+
+        return previous_result
 
 
-
-    def get_partitions(self, num_parts):
+    def get_partitions(self, num_parts, return_max=False):
         """Returns cluster partitions for specified number of clusters.
 
         Args:
             num_parts (int): number of cluster partitions
+            return_max (boolean): if true return the maximum distance between body ids in one cluster
         Returns:
             (dict, dataframe): {cluster id: [body1, body2,...]}, "bodyid", "cluster id"
+            optional (dict, dataframe, float, tuple): includes maximum distance between bodies in a cluster
+            and those body ids
         """
         from scipy.cluster.hierarchy import cut_tree
         partitions = cut_tree(self.cluster, n_clusters=num_parts)
@@ -141,6 +194,10 @@ class HCluster:
             if label not in res:
                 res[label] = []
             res[label].append(self.labels[idx])
+        
+        if return_max:
+            max_dist, max_pair = self._get_max_dist(res)
+            return (res, mapping, max_dist, max_pair)
         return (res, mapping)
 
 
