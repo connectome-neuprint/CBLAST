@@ -8,11 +8,26 @@ import numpy as np
 import pandas as pd
 
 
+def save_clustering(clusters, filename):
+    """Save clusters to disk.
+    
+    Args:
+        clusters (dataframe): bodyid, type mapping for a given clustering
+        filename (str): name of file
+    """
 
-# ?! mod hierarchical cluster partition result to also return the max dist, allow restriction based on distance (when comparing two different features check distance for similar partition and find diffs and see how different it clusters when distance constrained -- if the distances are believed to be equivalent-ish
+    clusters.to_feature(filename)
 
+def load_clustering(filename):
+    """Load clusters from disk.
+    
+    Args:
+        filename (str): name of file
+    Returns:
+        dataframe: bodyid and type mappings for a given cluster 
+    """
 
-
+    return pd.read_feather(filename, columns=None, use_threads=True)
 
 
 def compute_distance_matrix(features):
