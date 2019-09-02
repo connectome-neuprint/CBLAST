@@ -549,7 +549,7 @@ def nonlinear_reduce_features(features, num_components=2):
     return pd.DataFrame(reducedfeatures, index=features.index.values.tolist())
 
 def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_restriction=None,
-        minconn=3, collapse_type=True, normalize=True, preprocess=True, wgts=[0.8,0.1,0.1], customtypes={}):
+        minconn=3, collapse_type=True, normalize=True, preprocess=True, wgts=[0.8,0.1,0.1], customtypes={}, sort_types=False):
     """Computes an pairwise adjacency matrix for the given set of neurons.
 
     This function looks at inputs and outputs for the set of neurons.  The connections
@@ -567,6 +567,8 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
         normalize (boolean): If true, each row is normalized to a unit vector
         preprocess (boolean): if true, features produced by the algorithm are combined in weighted manner
         wgts (list): a list of weights for each feature set (unscaled vs scaled vs size features)
+        customtypes (dict): mapping of body ids to a cluster id
+        sort_types (boolean): if true, do not collapse types, sort them
     Returns:
         (dataframe): Distance matrix between provided neurosn
     
@@ -585,6 +587,7 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
     inputs_list = {} 
     outputs_list = {} 
 
+    body2type = {}
     for iter1 in range(0, len(neuronlist), 100):
         currlist = neuronlist[iter1:iter1+100]
         outputsquery=f"WITH {currlist} AS TARGETS MATCH(x :`{dataset}-ConnectionSet`)-\
@@ -609,11 +612,21 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
             if row["body1"] == row["body2"]:
                 continue
             feat_type = row["body2"]
-            if feat_type in customtypes:
-                feat_type = customtypes[feat_type]
-            elif collapse_type and row["type"] is not None and row["type"] != "":
-                feat_type = row["type"]
-            
+
+            if not sort_types:
+                if feat_type in customtypes:
+                    feat_type = customtypes[feat_type]
+                elif collapse_type and row["type"] is not None and row["type"] != "":
+                    feat_type = row["type"]
+            else:
+                common_type = ""
+                if feat_type in customtypes:
+                    common_type = customtypes[feat_type]
+                elif collapse_type and row["type"] is not None and row["type"] != "":
+                    common_type = row["type"]
+                if common_type != "":
+                    body2type[feat_type] = common_type
+
             roiinfo = json.loads(row["info"])
 
             totconn = 0
@@ -636,8 +649,21 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
             if row["body1"] == row["body2"]:
                 continue
             feat_type = row["body2"]
-            if collapse_type and row["type"] is not None and row["type"] != "":
-                feat_type = row["type"]
+
+            if not sort_types:
+                if feat_type in customtypes:
+                    feat_type = customtypes[feat_type]
+                elif collapse_type and row["type"] is not None and row["type"] != "":
+                    feat_type = row["type"]
+            else:
+                common_type = ""
+                if feat_type in customtypes:
+                    common_type = customtypes[feat_type]
+                elif collapse_type and row["type"] is not None and row["type"] != "":
+                    common_type = row["type"]
+                if common_type != "":
+                    body2type[feat_type] = common_type
+
             roiinfo = json.loads(row["info"])
 
             totconn = 0
@@ -695,12 +721,38 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
         features_size_arr[iter1] = [tot_in, tot_out]
 
     featurenames = []
+    equivclasses = {}
+   
+    # if body2type is loaded, sort type connectivity
     for input in commonin:
-        featurenames.append(str(input)+"=>")
+        key = str(input)+"=>"
+        if input in body2type:
+            key = "c-" + str(body2type[input]) + "(" + str(input) + ")=>"
+            if body2type[input] in equivclasses:
+                equivclasses[body2type[input]].append(key)
+            else:
+                equivclasses[body2type[input]] = [key]
+        featurenames.append(key)
     for output in commonout:
-        featurenames.append(str(output)+"<=")
+        key = str(input)+"<="
+        if input in body2type:
+            key = "c-" + str(body2type[input]) + "(" + str(input) + ")<="
+            if body2type[input] in equivclasses:
+                equivclasses[body2type[input]].append(key)
+            else:
+                equivclasses[body2type[input]] = [key]
+        featurenames.append(key)
 
     features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames) 
+    
+    # sort connections to neurons in the same class
+    if len(equivclasses):
+            equivlists = []
+            for key, arr in equivclasses.items():
+                equivlists.append(arr)
+            
+            features = sort_equiv_features(features, equivlists)
+        
     features_sz = pd.DataFrame(features_size_arr, index=neuronlist, columns=["post", "pre"]) 
    
     if preprocess:
