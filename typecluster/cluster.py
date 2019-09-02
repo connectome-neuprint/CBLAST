@@ -7,6 +7,14 @@ import json
 import numpy as np
 import pandas as pd
 
+
+
+# ?! mod hierarchical cluster partition result to also return the max dist, allow restriction based on distance (when comparing two different features check distance for similar partition and find diffs and see how different it clusters when distance constrained -- if the distances are believed to be equivalent-ish
+
+
+
+
+
 def compute_distance_matrix(features):
     """Compute a distance matrix between the neurons.
 
@@ -23,12 +31,64 @@ def compute_distance_matrix(features):
 
     return pd.DataFrame(dist_matrix, index=features.index.values.tolist(), columns=features.index.values.tolist())
 
+
+def report_diffs(self, part1, part2, features1 = None, features2 = None)
+    """Return the bodies that are in different clusters. Ordered by distance if features provided.
+    """
+    
+    # get part1 fragments
+    # get type => [bodyid...]
+    type2bodies = {}
+    for bodyid, cluster in part1.items():
+        if cluster not in type2bodies:
+            type2bodies[cluster] = []
+        type2bodies[cluster].append(bodyid)
+
+
+    falsepart1 = []
+    for cluster, bodyids in type2bodies.items():
+        for iter1 in range(len(bodyids)):
+            for iter2 in  range(iter1+1, len(bodyids)):
+                if part2[bodyids[iter1]] != part2[bodyids[iter2]]:
+                    if features2 is not None:
+                        v1 = features2.loc[bodyids[iter1]].values
+                        v2 = features2.loc[bodyids[iter2]].values
+                        diffvec = (v1-v2)**2
+                        diff = diffvec.sum()**(1/2)
+                    falsepart1.append((diff, bodyids[iter1], bodyids[iter2]))
+
+    # get part2 fragments
+    type2bodies = {}
+    for bodyid, cluster in part2.items():
+        if cluster not in type2bodies:
+            type2bodies[cluster] = []
+        type2bodies[cluster].append(bodyid)
+
+    falsepart2 = []
+    for cluster, bodyids in type2bodies.items():
+        for iter1 in range(len(bodyids)):
+            for iter2 in  range(iter1+1, len(bodyids)):
+                if part1[bodyids[iter1]] != part1[bodyids[iter2]]:
+                    if features1 is not None:
+                        v1 = features1.loc[bodyids[iter1]].values
+                        v2 = features1.loc[bodyids[iter2]].values
+                        diffvec = (v1-v2)**2
+                        diff = diffvec.sum()**(1/2)
+                    falsepart2.append((diff, bodyids[iter1], bodyids[iter2]))
+                  
+    falsepart1.sort()
+    falsepart2.sort()
+
+    return falsepart1, falsepart2
+
+    
 class HCluster:
     """Simple wrapper class for cluster output to preserve labeling.
     """
-    def __init__(self, cluster, labels):
+    def __init__(self, cluster, labels, features):
         self.cluster = cluster
         self.labels = labels
+        self.features = features
 
     def compute_vi(self, gtmap, num_parts=0):
         """Return variation of information based on provided ground truth maps.
@@ -59,6 +119,9 @@ class HCluster:
                 bestres = (merge, split, bodyrank, len(gtmap)-colid)
 
         return bestres
+
+
+
 
     def get_partitions(self, num_parts):
         """Returns cluster partitions for specified number of clusters.
@@ -268,11 +331,11 @@ def hierarchical_cluster(features):
     from scipy.cluster.hierarchy import linkage
     
     # compute distance function
-    #distm = compute_distance_matrix(features)
+    # distm = compute_distance_matrix(features)
     
     clustering = linkage(features.values, 'ward')
     
-    return HCluster(clustering, features.index.values.tolist())
+    return HCluster(clustering, features.index.values.tolist(), features)
 
 
 def kmeans_cluster(features, num_clusters):
