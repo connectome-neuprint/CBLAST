@@ -15,7 +15,8 @@ def save_features(features, filename):
         filename (str): name of file
     """
 
-    features.to_feature(filename)
+    tmpfeatures = features.reset_index()
+    tmpfeatures.to_feather(filename)
 
 def load_features(filename):
     """Load features from disk.
@@ -26,8 +27,9 @@ def load_features(filename):
         dataframe: features for a set of bodies
     """
 
-    return pd.read_feather(filename, columns=None, use_threads=True)
-
+    features =  pd.read_feather(filename, columns=None, use_threads=True)
+    features.set_index('index', inplace=True)
+    return features
 
 def extract_roioverlap_features(neuronlist, dataset, npclient, roilist=None, preprocess=True, wgts=[0.25,0.6,0.15]):
     """Extract simple ROI overlap features. 
@@ -469,7 +471,7 @@ def extract_projection_features(neuronlist, dataset, npclient, roilist=None, pre
         for key, arr in equivclasses.items():
             equivlists.append(arr)
         
-        features = sort_equiv_features(features, equivlists)
+        features = _sort_equiv_features(features, equivlists)
     
     features_sz = pd.DataFrame(featureszarray, index=neuronlist, columns=["post", "pre"]) 
    
@@ -489,8 +491,12 @@ def extract_projection_features(neuronlist, dataset, npclient, roilist=None, pre
         features_norm = normalize(features_arr, axis=1, norm='l2')
         scaledfeatures_norm = normalize(scaledfeatures, axis=1, norm='l2')
 
+        scaled_featnames=[]
+        for name in featurenames:
+            scaled_featnames.append(str(name)+"-s")
+
         features_normdf = pd.DataFrame(features_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
-        scaledfeatures_normdf = pd.DataFrame(scaledfeatures_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
+        scaledfeatures_normdf = pd.DataFrame(scaledfeatures_norm, index=features.index.values.tolist(), columns=scaled_featnames)
         aux_scaledfeaturesdf = pd.DataFrame(aux_scaledfeatures, index=features.index.values.tolist(), columns=features_sz.columns.values.tolist())
 
         return combine_features([features_normdf, scaledfeatures_normdf, aux_scaledfeaturesdf], wgts)
@@ -751,7 +757,7 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
             for key, arr in equivclasses.items():
                 equivlists.append(arr)
             
-            features = sort_equiv_features(features, equivlists)
+            features = _sort_equiv_features(features, equivlists)
         
     features_sz = pd.DataFrame(features_size_arr, index=neuronlist, columns=["post", "pre"]) 
    
@@ -845,13 +851,30 @@ def find_max_variance(features, numfeatures=40):
 def _sort_equiv_features(features, equivlists):
     """Sort related features from big to small.
     """
-   
-    for idx, row in res.iterrows():
+  
+    for idx, row in features.iterrows():
+        rowdict = row.to_dict()
         for group in equivlists:
-            res = list(row[group])
-            res.sort()
-            res.reverse()
-            row[group] = res
+            vals = []
+            labels = []
+            for item in group:
+                vals.append(rowdict[item])
+                labels.append(item)
+            vals.sort()
+            vals.reverse()
+            for idx2, label in enumerate(labels):
+                rowdict[label] = vals[idx2]
+
+        for idx2, cname in enumerate(row.index.tolist()):
+            row[idx2] = rowdict[cname] 
+
+        #for group in equivlists:
+            
+            #res = list(row[group])
+            #res.sort()
+            #res.reverse()
+            #row[group] = res
+            pass
     return features
 
 

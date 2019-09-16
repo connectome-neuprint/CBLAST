@@ -47,8 +47,15 @@ def compute_distance_matrix(features):
     return pd.DataFrame(dist_matrix, index=features.index.values.tolist(), columns=features.index.values.tolist())
 
 
-def report_diffs(self, part1, part2, features1 = None, features2 = None)
+def report_diffs(part1, part2, features1 = None, features2 = None):
     """Return the bodies that are in different clusters. Ordered by distance if features provided.
+
+    Returns:
+        (list, list): Lists of pairs of bodies in different clusters compared to the
+        first partition and second partition respectively.  Sorted so the
+        first entry represents the largest difference between differences
+        (a large value means the two bodies are in very disimilar with respect
+        to one set of features despite being similar in the other feautures)
     """
     
     # get part1 fragments
@@ -58,7 +65,6 @@ def report_diffs(self, part1, part2, features1 = None, features2 = None)
         if cluster not in type2bodies:
             type2bodies[cluster] = []
         type2bodies[cluster].append(bodyid)
-
 
     falsepart1 = []
     for cluster, bodyids in type2bodies.items():
@@ -70,7 +76,13 @@ def report_diffs(self, part1, part2, features1 = None, features2 = None)
                         v2 = features2.loc[bodyids[iter2]].values
                         diffvec = (v1-v2)**2
                         diff = (diffvec.sum())**(1/2)
-                    falsepart1.append((diff, bodyids[iter1], bodyids[iter2]))
+    
+                        # difference between differences
+                        v1 = features1.loc[bodyids[iter1]].values
+                        v2 = features1.loc[bodyids[iter2]].values
+                        diffvec = (v1-v2)**2
+                        diff2 = (diffvec.sum())**(1/2)
+                        falsepart1.append((diff-diff2, diff, bodyids[iter1], bodyids[iter2]))
 
     # get part2 fragments
     type2bodies = {}
@@ -89,11 +101,19 @@ def report_diffs(self, part1, part2, features1 = None, features2 = None)
                         v2 = features1.loc[bodyids[iter2]].values
                         diffvec = (v1-v2)**2
                         diff = (diffvec.sum())**(1/2)
-                    falsepart2.append((diff, bodyids[iter1], bodyids[iter2]))
-                  
-    falsepart1.sort()
-    falsepart2.sort()
+                        
+                        # difference between differences
+                        v1 = features2.loc[bodyids[iter1]].values
+                        v2 = features2.loc[bodyids[iter2]].values
+                        diffvec = (v1-v2)**2
+                        diff2 = (diffvec.sum())**(1/2)
+                        falsepart2.append((diff-diff2, diff, bodyids[iter1], bodyids[iter2]))
 
+    falsepart1.sort()
+    falsepart1.reverse() 
+    falsepart2.sort()
+    falsepart2.reverse()
+    
     return falsepart1, falsepart2
 
     

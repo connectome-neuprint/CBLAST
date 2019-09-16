@@ -13,7 +13,7 @@ will aid the in creation of even better features.
 Install [conda](https://docs.conda.io/en/latest/miniconda.html).
 
     % conda create -n typecluster
-    % conda install scipy scikit-learn umap-learn jupyter hvplot bokeh plotly neuprint-python -n typecluster -c conda-forge -c flyem-forge
+    % conda install scipy scikit-learn umap-learn jupyter hvplot bokeh plotly neuprint-python pyarrow -n typecluster -c conda-forge -c flyem-forge
     % source activate typecluster
     % git clone https://github.com/connectome-neuprint/typecluster.git
     % cd typecluster; python setup.py install
