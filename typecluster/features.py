@@ -740,13 +740,13 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
                 equivclasses[body2type[input]] = [key]
         featurenames.append(key)
     for output in commonout:
-        key = str(input)+"<="
-        if input in body2type:
-            key = "c-" + str(body2type[input]) + "(" + str(input) + ")<="
-            if body2type[input] in equivclasses:
-                equivclasses[body2type[input]].append(key)
+        key = str(output)+"<="
+        if output in body2type:
+            key = "c-" + str(body2type[output]) + "(" + str(output) + ")<="
+            if body2type[output] in equivclasses:
+                equivclasses[body2type[output]].append(key)
             else:
-                equivclasses[body2type[input]] = [key]
+                equivclasses[body2type[output]] = [key]
         featurenames.append(key)
 
     features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames) 
