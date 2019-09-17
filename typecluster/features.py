@@ -576,7 +576,7 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
         customtypes (dict): mapping of body ids to a cluster id
         sort_types (boolean): if true, do not collapse types, sort them
     Returns:
-        (dataframe): Distance matrix between provided neurosn
+        (dataframe): Distance matrix between provided neurons
     
 
     Note: only connection to traced neurons are considered..
