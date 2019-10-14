@@ -4,7 +4,7 @@
 from . import features
 from . import cluster
 
-def iterative_features(neuronlist, dataset, npclient, est_neuron_per_cluster, projection_init=True, iterative=True, collapse_types=False):
+def iterative_features(neuronlist, dataset, npclient, est_neuron_per_cluster, projection_init=True, iterative=True, collapse_types=False, saved_projection=""):
     """Generate features through speculative iteration.
 
     Args:
@@ -15,6 +15,7 @@ def iterative_features(neuronlist, dataset, npclient, est_neuron_per_cluster, pr
         projection_init (boolean): use projection features to seed initial clustering
         iterative (boolean): iteratively refine features based on connectivity cluster results
         collapse_types (boolean): true means to collapse types, false means to sort
+        saved_projection (str): location of file to store or restore features
    
     Return:
        (dataframe): Features for neuron list
@@ -30,12 +31,25 @@ def iterative_features(neuronlist, dataset, npclient, est_neuron_per_cluster, pr
 
     neuron2cluster = None
     if projection_init:
-        # generate projection features or body id connectivity features
-        roiquery = f"MATCH (m :Meta) WHERE m.dataset=\"{dataset}\" RETURN m.superLevelRois AS rois"                    
-        roires = npclient.fetch_custom(roiquery)                                                                       
-        superrois = set(roires["rois"].iloc[0])
 
-        features_pro = features.extract_projection_features(neuronlist, dataset, npclient, roilist=list(superrois), leftright=True)
+        features_pro = None
+        if saved_projection != "":
+            try:
+                features_pro = features.load_features(saved_projection)
+            except:
+                pass
+
+        # if not features are read from disk, compute features
+        if features_pro is None:
+            # generate projection features or body id connectivity features
+            roiquery = f"MATCH (m :Meta) WHERE m.dataset=\"{dataset}\" RETURN m.superLevelRois AS rois"                    
+            roires = npclient.fetch_custom(roiquery)                                                                       
+            superrois = set(roires["rois"].iloc[0])
+
+            features_pro = features.extract_projection_features(neuronlist, dataset, npclient, roilist=list(superrois), leftright=True)
+
+            if saved_projection != "":
+                features.save_features(features_pro, saved_projection)
 
         # create (aggressive?) clusters
         hcluster = cluster.hierarchical_cluster(features_pro)
@@ -44,16 +58,25 @@ def iterative_features(neuronlist, dataset, npclient, est_neuron_per_cluster, pr
 
     features_type = None
     lastdist = 9999999999
+
+    # get and save all ccnnectivity features
+    replay_data = features.compute_connection_similarity_features(neuronlist, dataset, npclient, sort_types=(not collapse_types), dump_replay=True)
+
+    # compute type features based on predicted clusters
     while True:
         # TODO: potentially set the cluster name to be a representative element
         # from the cluster
         customtypes = {}
         if neuron2cluster is not None:
             customtypes =  dict(zip(neuron2cluster["bodyid"], neuron2cluster["type"]))
-       
         
+        # add new cell type groupings
+        p1, p2, p3, p4, old_body2type = replay_data
+        old_body2type.update(customtypes)
+        replay_data_mod = (p1,p2,p3,p4,old_body2type)
+
         # compute type features based on predicted clusters
-        features_type = features.compute_connection_similarity_features(neuronlist, dataset, npclient, customtypes=customtypes,  sort_types=(not collapse_types))
+        features_type = features.compute_connection_similarity_features(neuronlist, dataset, npclient, customtypes=customtypes,  sort_types=(not collapse_types), replay_data=replay_data_mod)
         # iteratively refine
         if not iterative:
             break

@@ -555,7 +555,7 @@ def nonlinear_reduce_features(features, num_components=2):
     return pd.DataFrame(reducedfeatures, index=features.index.values.tolist())
 
 def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_restriction=None,
-        minconn=3, collapse_type=True, normalize=True, preprocess=True, wgts=[0.8,0.1,0.1], customtypes={}, sort_types=False):
+        minconn=3, collapse_type=True, normalize=True, preprocess=True, wgts=[0.8,0.1,0.1], customtypes={}, sort_types=False, dump_replay=False, replay_data = None):
     """Computes an pairwise adjacency matrix for the given set of neurons.
 
     This function looks at inputs and outputs for the set of neurons.  The connections
@@ -567,7 +567,7 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
         neuronlist (list): list of body ids
         dataset (str): name of neuprint dataset
         npclient (object): neuprint client object
-        roi_restriction (list): ROIs to restrict feature extractio (default all)n
+        roi_restriction (list): ROIs to restrict feature extractio (default all)
         minconn (int): Only consider connections >= minconn
         collapse_type (boolean): If true, clustering uses existing cell type info
         normalize (boolean): If true, each row is normalized to a unit vector
@@ -575,6 +575,8 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
         wgts (list): a list of weights for each feature set (unscaled vs scaled vs size features)
         customtypes (dict): mapping of body ids to a cluster id
         sort_types (boolean): if true, do not collapse types, sort them
+        dump_replay (boolean): dumps features after parsing neuprint
+        replay_data (tuple): data to enable replay
     Returns:
         (dataframe): Distance matrix between provided neurons
     
@@ -594,137 +596,149 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
     outputs_list = {} 
 
     body2type = {}
-    for iter1 in range(0, len(neuronlist), 100):
-        currlist = neuronlist[iter1:iter1+100]
-        outputsquery=f"WITH {currlist} AS TARGETS MATCH(x :`{dataset}-ConnectionSet`)-\
-        [:From]->(n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS WITH collect(x) as\
-        csets, n UNWIND csets as cset MATCH (cset)-[:To]->(m :`{dataset}-Neuron`) where\
-        (m.status=~'.*raced' OR m.status=\"Leaves\") RETURN n.bodyId AS body1, cset.roiInfo AS info, m.bodyId AS body2, m.type AS type"
-
-        inputsquery=f"WITH {currlist} AS TARGETS MATCH(x :`{dataset}-ConnectionSet`)-\
-        [:To]->(n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS WITH collect(x) as\
-        csets, n UNWIND csets as cset MATCH (cset)-[:From]->(m :`{dataset}-Neuron`) where\
-        (m.status=~'.*raced' OR m.status=\"Leaves\") RETURN n.bodyId AS body1, cset.roiInfo AS info, m.bodyId AS body2, m.type AS type"
-     
-
-        outres = npclient.fetch_custom(outputsquery)
-        currblist = neuronlist[iter1:iter1+50]
-        queryin = inputsquery.format(currblist)
-        queryout = outputsquery.format(currblist)
-
-        print(f"fetch batch {iter1}")
-
-        for idx, row in outres.iterrows():
-            if row["body1"] == row["body2"]:
-                continue
-            feat_type = row["body2"]
-
-            if not sort_types:
-                if feat_type in customtypes:
-                    feat_type = customtypes[feat_type]
-                elif collapse_type and row["type"] is not None and row["type"] != "":
-                    feat_type = row["type"]
-            else:
-                common_type = ""
-                if feat_type in customtypes:
-                    common_type = customtypes[feat_type]
-                elif collapse_type and row["type"] is not None and row["type"] != "":
-                    common_type = row["type"]
-                if common_type != "":
-                    body2type[feat_type] = common_type
-
-            roiinfo = json.loads(row["info"])
-
-            totconn = 0
-            for roi, val in roiinfo.items():
-                if roi_restriction is not None:
-                    if roi not in roi_restriction:
-                        continue
-                totconn += val["post"]
-
-            if totconn >= minconn:
-                if row["body1"] not in outputs_list:
-                    outputs_list[row["body1"]] = {}
-                if feat_type not in outputs_list[row["body1"]]:
-                    outputs_list[row["body1"]][feat_type] = 0
-                outputs_list[row["body1"]][feat_type] += totconn
-                commonout.add(feat_type)
-
-        inres = npclient.fetch_custom(inputsquery)
-        for idx, row in inres.iterrows():
-            if row["body1"] == row["body2"]:
-                continue
-            feat_type = row["body2"]
-
-            if not sort_types:
-                if feat_type in customtypes:
-                    feat_type = customtypes[feat_type]
-                elif collapse_type and row["type"] is not None and row["type"] != "":
-                    feat_type = row["type"]
-            else:
-                common_type = ""
-                if feat_type in customtypes:
-                    common_type = customtypes[feat_type]
-                elif collapse_type and row["type"] is not None and row["type"] != "":
-                    common_type = row["type"]
-                if common_type != "":
-                    body2type[feat_type] = common_type
-
-            roiinfo = json.loads(row["info"])
-
-            totconn = 0
-            for roi, val in roiinfo.items():
-                if roi_restriction is not None:
-                    if roi not in roi_restriction:
-                        continue
-                totconn += val["post"]
-
-            if totconn >= minconn:
-                if row["body1"] not in inputs_list:
-                    inputs_list[row["body1"]] = {}
-                if feat_type not in inputs_list[row["body1"]]:
-                    inputs_list[row["body1"]][feat_type] = 0
-                inputs_list[row["body1"]][feat_type] += totconn
-                commonin.add(feat_type)
-
-
-    # populate feature array
-    features_arr = np.zeros((len(neuronlist), len(commonin) + len(commonout)))
-    features_size_arr = np.zeros((len(neuronlist), 2))
-
-    for iter1, bodyid in enumerate(neuronlist):
-        featurevec = [0]*(len(commonin)+len(commonout))
-
-        # load input features
-        tot_in = 0
-        if bodyid in inputs_list:
-            for input in commonin:
-                if input in inputs_list[bodyid]:
-                    val = inputs_list[bodyid][input]
-                    tot_in += val
-            for idx, input in enumerate(commonin):
-                if input in inputs_list[bodyid]:
-                    val = inputs_list[bodyid][input]
-                    if normalize:
-                        val /= tot_in
-                    featurevec[idx] = val
-
-        # load output features
-        tot_out = 0
-        if bodyid in outputs_list:
-            for output in commonout:
-                if output in outputs_list[bodyid]:
-                    val = outputs_list[bodyid][output]
-                    tot_out += val
-            for idx, output in enumerate(commonout):
-                if output in outputs_list[bodyid]:
-                    val = outputs_list[bodyid][output]
-                    if normalize:
-                        val /= tot_out
-                    featurevec[len(commonin)+idx] = val
+  
     
-        features_arr[iter1] = featurevec
-        features_size_arr[iter1] = [tot_in, tot_out]
+    features_arr = None
+    features_size_arr = None
+    
+    if replay_data is not None:
+        features_arr, features_size_arr, commonin, commonout, body2type = replay_data 
+    else:
+        for iter1 in range(0, len(neuronlist), 100):
+            currlist = neuronlist[iter1:iter1+100]
+            outputsquery=f"WITH {currlist} AS TARGETS MATCH(x :`{dataset}-ConnectionSet`)-\
+            [:From]->(n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS WITH collect(x) as\
+            csets, n UNWIND csets as cset MATCH (cset)-[:To]->(m :`{dataset}-Neuron`) where\
+            (m.status=~'.*raced' OR m.status=\"Leaves\") RETURN n.bodyId AS body1, cset.roiInfo AS info, m.bodyId AS body2, m.type AS type"
+
+            inputsquery=f"WITH {currlist} AS TARGETS MATCH(x :`{dataset}-ConnectionSet`)-\
+            [:To]->(n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS WITH collect(x) as\
+            csets, n UNWIND csets as cset MATCH (cset)-[:From]->(m :`{dataset}-Neuron`) where\
+            (m.status=~'.*raced' OR m.status=\"Leaves\") RETURN n.bodyId AS body1, cset.roiInfo AS info, m.bodyId AS body2, m.type AS type"
+         
+
+            outres = npclient.fetch_custom(outputsquery)
+            currblist = neuronlist[iter1:iter1+50]
+            queryin = inputsquery.format(currblist)
+            queryout = outputsquery.format(currblist)
+
+            print(f"fetch batch {iter1}")
+
+            for idx, row in outres.iterrows():
+                if row["body1"] == row["body2"]:
+                    continue
+                feat_type = row["body2"]
+
+                if not sort_types:
+                    if feat_type in customtypes:
+                        feat_type = customtypes[feat_type]
+                    elif collapse_type and row["type"] is not None and row["type"] != "":
+                        feat_type = row["type"]
+                else:
+                    common_type = ""
+                    if feat_type in customtypes:
+                        common_type = customtypes[feat_type]
+                    elif collapse_type and row["type"] is not None and row["type"] != "":
+                        common_type = row["type"]
+                    if common_type != "":
+                        body2type[feat_type] = common_type
+
+                roiinfo = json.loads(row["info"])
+
+                totconn = 0
+                for roi, val in roiinfo.items():
+                    if roi_restriction is not None:
+                        if roi not in roi_restriction:
+                            continue
+                    totconn += val["post"]
+
+                if totconn >= minconn:
+                    if row["body1"] not in outputs_list:
+                        outputs_list[row["body1"]] = {}
+                    if feat_type not in outputs_list[row["body1"]]:
+                        outputs_list[row["body1"]][feat_type] = 0
+                    outputs_list[row["body1"]][feat_type] += totconn
+                    commonout.add(feat_type)
+
+            inres = npclient.fetch_custom(inputsquery)
+            for idx, row in inres.iterrows():
+                if row["body1"] == row["body2"]:
+                    continue
+                feat_type = row["body2"]
+
+                if not sort_types:
+                    if feat_type in customtypes:
+                        feat_type = customtypes[feat_type]
+                    elif collapse_type and row["type"] is not None and row["type"] != "":
+                        feat_type = row["type"]
+                else:
+                    common_type = ""
+                    if feat_type in customtypes:
+                        common_type = customtypes[feat_type]
+                    elif collapse_type and row["type"] is not None and row["type"] != "":
+                        common_type = row["type"]
+                    if common_type != "":
+                        body2type[feat_type] = common_type
+
+                roiinfo = json.loads(row["info"])
+
+                totconn = 0
+                for roi, val in roiinfo.items():
+                    if roi_restriction is not None:
+                        if roi not in roi_restriction:
+                            continue
+                    totconn += val["post"]
+
+                if totconn >= minconn:
+                    if row["body1"] not in inputs_list:
+                        inputs_list[row["body1"]] = {}
+                    if feat_type not in inputs_list[row["body1"]]:
+                        inputs_list[row["body1"]][feat_type] = 0
+                    inputs_list[row["body1"]][feat_type] += totconn
+                    commonin.add(feat_type)
+
+
+        # populate feature array
+        features_arr = np.zeros((len(neuronlist), len(commonin) + len(commonout)))
+        features_size_arr = np.zeros((len(neuronlist), 2))
+
+        for iter1, bodyid in enumerate(neuronlist):
+            featurevec = [0]*(len(commonin)+len(commonout))
+
+            # load input features
+            tot_in = 0
+            if bodyid in inputs_list:
+                for input in commonin:
+                    if input in inputs_list[bodyid]:
+                        val = inputs_list[bodyid][input]
+                        tot_in += val
+                for idx, input in enumerate(commonin):
+                    if input in inputs_list[bodyid]:
+                        val = inputs_list[bodyid][input]
+                        if normalize:
+                            val /= tot_in
+                        featurevec[idx] = val
+
+            # load output features
+            tot_out = 0
+            if bodyid in outputs_list:
+                for output in commonout:
+                    if output in outputs_list[bodyid]:
+                        val = outputs_list[bodyid][output]
+                        tot_out += val
+                for idx, output in enumerate(commonout):
+                    if output in outputs_list[bodyid]:
+                        val = outputs_list[bodyid][output]
+                        if normalize:
+                            val /= tot_out
+                        featurevec[len(commonin)+idx] = val
+        
+            features_arr[iter1] = featurevec
+            features_size_arr[iter1] = [tot_in, tot_out]
+
+        # return intermediate data if requested
+        if dump_replay:
+            return (features_arr, features_size_arr, commonin, commonout, body2type)
 
     featurenames = []
     equivclasses = {}
