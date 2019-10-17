@@ -29,6 +29,8 @@ def iterative_features(neuronlist, dataset, npclient, est_neuron_per_cluster, pr
     """
     # TODO potentially use a distance threshold for initial clustering (or connectome clustering)
 
+    assert not collapse_types, "Does not support cell type collapsing"
+
     neuron2cluster = None
     if projection_init:
 
