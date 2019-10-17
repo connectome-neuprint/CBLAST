@@ -16,7 +16,7 @@ def save_clustering(clusters, filename):
         filename (str): name of file
     """
 
-    clusters.to_feature(filename)
+    clusters.to_feather(filename)
 
 def load_clustering(filename):
     """Load clusters from disk.
@@ -421,12 +421,19 @@ def hierarchical_cluster(features):
         (HClusterobject): wraps cluster resultss
     """
     from scipy.cluster.hierarchy import linkage
-    
+    from sklearn.metrics import pairwise_distances
+    import scipy.spatial.distance as ssd
+
+    # compute distance function multi-threaded as input to linkage
+    D = pairwise_distances(X = features.values, metric = 'euclidean', n_jobs = -1)
+    D = np.round(D, 3)
+    distArray = ssd.squareform(D)
+    clustering = linkage(distArray, 'ward')
     # compute distance function
     # distm = compute_distance_matrix(features)
-    
-    clustering = linkage(features.values, 'ward')
-    
+
+    #clustering = linkage(features.values, 'ward')
+
     return HCluster(clustering, features.index.values.tolist(), features)
 
 

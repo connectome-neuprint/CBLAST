@@ -891,7 +891,28 @@ def _sort_equiv_features(features, equivlists):
             pass
     return features
 
+    """ TODO -- parallelize
+    import dask.dataframe as ddf
+    def sortrows(row):
+        rowdict = row.to_dict()
+        for group in equivlists:
+            vals = []
+            labels = []
+            for item in group:
+                vals.append(rowdict[item])
+                labels.append(item)
+            vals.sort()
+            vals.reverse()
+            for idx2, label in enumerate(labels):
+                rowdict[label] = vals[idx2]
 
+        for idx2, cname in enumerate(row.index.tolist()):
+            row[idx2] = rowdict[cname]
+        row
+
+    df_dask = ddf.from_pandas(features, npartitions=4)
+    return df_dask.apply(lambda x: sortrows(x), meta=('str'), axis=1).compute(scheduler='multiprocessing')
+    """
 
 
 
