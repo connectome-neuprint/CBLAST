@@ -40,9 +40,11 @@ def compute_distance_matrix(features):
     """
 
     # compute pairwise distance and put in square form
-    from scipy.spatial.distance import pdist
+    from sklearn.metrics import pairwise_distances
     from scipy.spatial.distance import squareform
-    dist_matrix = squareform(pdist(features.values))
+    
+    D = pairwise_distances(X = features.values, metric = 'euclidean', n_jobs = -1)
+    dist_matrix = squareform(D)
 
     return pd.DataFrame(dist_matrix, index=features.index.values.tolist(), columns=features.index.values.tolist())
 
@@ -421,21 +423,8 @@ def hierarchical_cluster(features):
         (HClusterobject): wraps cluster resultss
     """
     from scipy.cluster.hierarchy import linkage
-    from sklearn.metrics import pairwise_distances
-    import scipy.spatial.distance as ssd
-
-    # compute distance function multi-threaded as input to linkage
-    D = pairwise_distances(X = features.values, metric = 'euclidean', n_jobs = -1)
-    D = np.round(D, 3)
-    distArray = ssd.squareform(D)
     clustering = linkage(distArray, 'ward')
-    # compute distance function
-    # distm = compute_distance_matrix(features)
-
-    #clustering = linkage(features.values, 'ward')
-
     return HCluster(clustering, features.index.values.tolist(), features)
-
 
 def kmeans_cluster(features, num_clusters):
     """Run kmeans clustering.
