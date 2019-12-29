@@ -18,7 +18,7 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
 
     Args:
         features (dataframe): body id index, features...
-        clusters (dataframe): body id index, "type"
+        clusters (dataframe): body id index, "type" -- produced from get_partitions
         groundtruth (dataframe): body id index, "type"
         htmlfile (str): save data as html file instead of displaying in notebook
         tsne (boolean): use tsne instead of UMAP
@@ -154,7 +154,7 @@ def features_compareheatmap(features):
     Returns:
         heatmap showing the features
 
-    Note: should call on non-pca features but should restrict to most important features.
+    Note: should restrict to only a small number of features that have not been reduced 
     """
 
     featuresx = features.copy()
@@ -172,43 +172,6 @@ def features_compareheatmap(features):
     df = pd.DataFrame(featuresx.stack(), columns=['score']).reset_index()
     return df.hvplot.heatmap(x="feature", y="bodyid", C="score", colorbar=True, width=900, height=400)
 
-
-    """
-        # this is from https://bokeh.pydata.org/en/latest/docs/gallery/unemployment.html
-        colors = ["#75968f", "#a5bab7", "#c9d9d3", "#e2e2e2", "#dfccce", "#ddb7b1", "#cc7878", "#933b41", "#550b1d"]
-
-    reset_output()
-    output_notebook()
-    mapper = LinearColorMapper(palette=colors, low=df.score.min(), high=df.score.max())
-
-    TOOLS = "hover,save,pan,box_zoom,reset,wheel_zoom"
-
-    p = figure(title="features".format(feature[0], feature[-1]),
-               x_range=feature, y_range=list(reversed(bodyid)),
-               x_axis_location="above", plot_width=900, plot_height=400,
-               tools=TOOLS, toolbar_location='below',
-               tooltips=[('data', '@bodyid: @feature'), ('score', '@score')])
-
-    from math import pi
-    p.grid.grid_line_color = None
-    p.axis.axis_line_color = None
-    p.axis.major_tick_line_color = None
-    p.axis.major_label_text_font_size = "5pt"
-    p.axis.major_label_standoff = 0
-    p.xaxis.major_label_orientation = pi / 3
-
-    p.rect(x="feature", y="bodyid", width=1, height=1,
-           source=df,
-           fill_color={'field': 'score', 'transform': mapper},
-           line_color=None)
-
-    color_bar = ColorBar(color_mapper=mapper, major_label_text_font_size="5pt",
-                         ticker=BasicTicker(desired_num_ticks=len(colors)),
-                         formatter=PrintfTickFormatter(format="%d"),
-                         label_standoff=6, border_line_color=None, location=(0, 0))
-    p.add_layout(color_bar, 'right')
-    show(p)
-    """
 
 def features_radarchart(features, clusters=None, htmlfile=None):
     """Show radar chart for the provided features.
@@ -265,5 +228,4 @@ def features_radarchart(features, clusters=None, htmlfile=None):
     
     if htmlfile is not None:
         plotly.offline.plot(fig, filename=htmlfile)
-
     fig.show()
