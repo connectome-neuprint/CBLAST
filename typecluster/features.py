@@ -31,25 +31,26 @@ def load_features(filename):
     features.set_index('index', inplace=True)
     return features
 
-def extract_roioverlap_features(neuronlist, dataset, npclient, roilist=None, preprocess=True, wgts=[0.25,0.6,0.15]):
+def extract_roioverlap_features(npclient, dataset, neuronlist,
+        postprocess=sigmoid_process(70, 230, 1.0, 5.0), roilist=None):
     """Extract simple ROI overlap features. 
 
     Args:
-        neuronlist (list): list of body ids
-        dataset (str): name of neuprint dataset
         npclient (object): neuprint client object
+        dataset (str): name of neuprint dataset
+        neuronlist (list): list of body ids
+        postprocess (func): set with *_process function (each function allows users to set input and output to 0)
+        (default sets outputs to have 5x weight of inputs as a hack for Dropholia polyadic connections)
         roilist (list): custom list of ROIs to use
-        preprocess (boolean): if true, features produced by the algorithm are combined in weighted manner
-        wgts (list): a list of weights for each feature set (unscaled vs scaled vs size features)
     Returns:
-        (dataframe, dataframe): A tuple containing roi features
-        for each body id and pre and post size per body id (only one df returned if preprocess is true)
-
+        dataframe: index: body ids; columns: different features 
     """
 
+    # TODO: handle left/right symmetry
+
     # >= to use ROI feature
-    PRE_IMPORTANCECUTOFF = 10
-    POST_IMPORTANCECUTOFF = 50
+    PRE_IMPORTANCECUTOFF = 0
+    POST_IMPORTANCECUTOFF = 0
 
     overlapquery=f"WITH {neuronlist} AS TARGETS MATCH (n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS\
         RETURN n.bodyId AS bodyId, n.roiInfo AS roiInfo"
@@ -86,94 +87,53 @@ def extract_roioverlap_features(neuronlist, dataset, npclient, roilist=None, pre
                     bodyinfo_out[row["bodyId"]][roi] = val["post"] 
    
       # generate feature vector for the projectome and the pre and post sizes
-    featurearray = np.zeros((len(neuronlist), len(inrois)+len(outrois)))
-    featureszarray = np.zeros((len(neuronlist), 2))
+    features_in = np.zeros((len(neuronlist), len(inrois)))
+    features_out = np.zeros((len(neuronlist), len(outrois)))
 
-    # populate feature arrays.  Currently each feature row is normalized by the synapse input/output counts
-    for iter1, bodyid in enumerate(neuronlist):
-        featurevec = [0]*(len(inrois)+len(outrois))
-        insize = 0
-        for roi in inrois:
-            if bodyid in bodyinfo_in:
-                if roi in bodyinfo_in[bodyid]:
-                    val = bodyinfo_in[bodyid][roi]
-                    insize += val
-        
-        for idx, roi in enumerate(inrois):
-            if bodyid in bodyinfo_in:
-                if roi in bodyinfo_in[bodyid]:
-                    val = bodyinfo_in[bodyid][roi]
-                    featurevec[idx] = val/insize
+    # populate feature arrays
+    def load_features(features_arr, io_list, common_io):
+        for iter1, bodyid in enumerate(neuronlist):
+            featurevec = [0]*len(common_io)
+            for idx, roi in enumerate(common_io):
+                if bodyid in io_list:
+                    if roi in io_list[bodyid]:
+                        val = io_list[bodyid][roi]
+                        featurevec[idx] = val
+            features_arr[iter1] = featurevec
 
-        outsize = 0
-        for roi in outrois:
-            if bodyid in bodyinfo_out:
-                if roi in bodyinfo_out[bodyid]:
-                    val = bodyinfo_out[bodyid][roi]
-                    outsize += val
-        
-        for idx, roi in enumerate(outrois):
-            if bodyid in bodyinfo_out:
-                if roi in bodyinfo_out[bodyid]:
-                    val = bodyinfo_out[bodyid][roi]
-                    featurevec[len(inrois)+idx] = val/outsize
-
-        featureszarray[iter1] = [insize, outsize]
-        featurearray[iter1] = featurevec
+    load_features(features_in, bodyinfo_in, inrois)
+    load_features(features_out, bodyinfo_out, outrois)
 
     # construct dataframes for the features
     featurenames = []
     for froi in inrois:
         featurenames.append(froi + "<=")
+    features_in = pd.DataFrame(features_in, index=neuronlist, columns=featurenames) 
+    
+    featurenames = []
     for froi in outrois:
         featurenames.append(froi + "=>")
-    
-    features = pd.DataFrame(featurearray, index=neuronlist, columns=featurenames) 
-    features_sz = pd.DataFrame(featureszarray, index=neuronlist, columns=["post", "pre"]) 
-   
-    if preprocess:
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.preprocessing import normalize
-  
-        features_arr = features.values
+    features_out = pd.DataFrame(features_out, index=neuronlist, columns=featurenames) 
 
-        scaledfeatures = StandardScaler().fit_transform(features_arr)
-        aux_features_arr = features_sz.values
-        aux_scaledfeatures = StandardScaler().fit_transform(aux_features_arr)
-    
-        # ensure rows have the same magnitude -- this hopefully does not
-        # impact the original vectors too much since each row should probably
-        # be normalized in some way.
-        features_norm = normalize(features_arr, axis=1, norm='l2')
-        scaledfeatures_norm = normalize(scaledfeatures, axis=1, norm='l2')
-
-        features_normdf = pd.DataFrame(features_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
-        scaledfeatures_normdf = pd.DataFrame(scaledfeatures_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
-        aux_scaledfeaturesdf = pd.DataFrame(aux_scaledfeatures, index=features.index.values.tolist(), columns=features_sz.columns.values.tolist())
-
-        return combine_features([features_normdf, scaledfeatures_normdf, aux_scaledfeaturesdf], wgts)
-
-    return features, features_sz
+    return postprocess(features_in, features_out)
 
 
-
-def extract_projection_features(neuronlist, dataset, npclient, roilist=None, preprocess=True, wgts=[0.25,0.6,0.15], leftright=False):
+def extract_projection_features(neuronlist, dataset, npclient,
+        postprocess=sigmoid_process(70, 230, 0.5, 0.5), sym_excl = ["(L)", "(R)"], roilist=None ):
     """Extract features from a list of neurons.
 
     This function generates features based on ROI connectivity pattern
     of the neurons and their partners.
 
     Args:
-        neuronlist (list): list of body ids
-        dataset (str): name of neuprint dataset
         npclient (object): neuprint client object
+        dataset (str): name of neuprint dataset
+        neuronlist (list): list of body ids
+        postprocess (func): set with *_process function (each function allows users to set input and output to 0)
+        sym_excl (list(str)): a list of substrings to exclude from the ROI list (specific to hemibrain for now)
         roilist (list): custom list of ROIs to use
-        preprocess (boolean): if true, features produced by the algorithm are combined in weighted manner
-        wgts (list): a list of weights for each feature set (unscaled vs scaled vs size features)
-        leftright (boolean): true to treat left and right ROIs as symmetric
     Returns:
-        (dataframe, dataframe): A tuple containing projection features
-        for each body id and pre and post size per body id (only one df returned if preprocess is true)
+        dataframe: index: body ids; columns: different features 
 
     TODO:
         * allow users to specify ROI/sub-ROIs to be used (currently only
@@ -186,22 +146,9 @@ def extract_projection_features(neuronlist, dataset, npclient, roilist=None, pre
     Note: Current queries limit partner connections to those that are traced or leaves.
 
     """
-
-    # if left/right symmetry map ROIs to common name
-    roi2roi = {}
-    if roilist is not None and leftright:
-        for roi in roilist:
-            troi = roi.replace("(L)", "")
-            troi = troi.replace(" (right)", "")
-            troi = troi.replace(" (left)", "")
-            roi2roi[roi] = troi
-
-
     # >= give significant connections that should be weighted in the connectome
     # when normalizing across secondary connections, only consider those above the threshold
-    # ?? maybe should use percentil of connections rather than absolute weight?
-    # ?? should include the number of neurons that make up this threshold -- need separate mechanism to normalize
-    IMPORTANCECUTOFF = 2
+    IMPORTANCECUTOFF = 3
 
     # query db X neurons at a time (restrict to traced neurons for the targets)
     # make a set for all unique ROI labels
@@ -230,7 +177,16 @@ def extract_projection_features(neuronlist, dataset, npclient, roilist=None, pre
     else:
         superrois = set(roilist)
 
-    # body inputs (body => roi => [unsorted weights])
+
+    # if left/right symmetry map ROIs to common name
+    roi2roi = {}
+    for roi in roilist:
+        troi = roi
+        for excl in sym_excl: 
+            troi = troi.replace(excl, "")
+        roi2roi[roi] = troi
+
+    # biody inputs (body => roi => [unsorted weights])
     body2inputs = {}
     body2outputs = {}
     body2incount = {}
@@ -293,269 +249,109 @@ def extract_projection_features(neuronlist, dataset, npclient, roilist=None, pre
                     body2outcount[b1] += val["post"]
 
 
-    # generate feature vector for the projectome and the pre and post sizes
-    featurearray = np.zeros((len(neuronlist), 2*len(secrois)*len(inrois)+2*len(secrois)*len(outrois)))
-    featureszarray = np.zeros((len(neuronlist), 2))
+    # generate feature vector for the projectome (separatee upstream and downstream)
+    features_in = np.zeros((len(neuronlist), 2*len(secrois)*len(inrois)))
+    features_out = np.zeros((len(neuronlist), 2*len(secrois)*len(outrois)))
 
-    # populate feature arrays.  Currently each feature row is normalized by the synapse input/output counts
-    for iter1, bodyid in enumerate(neuronlist):
-        featurevec = []
+    def load_features(features_arr, firstrois, body2io):
+        # populate feature arrays.  Currently each feature row is normalized by the synapse input/output counts
+        for iter1, bodyid in enumerate(neuronlist):
+            featurevec = []
 
-        insize = 0
-        for roi in inrois:
-            secroifeat = [0]*2*len(secrois)
-            if bodyid in body2inputs:
-                if roi in body2inputs[bodyid]:
-                    partners = body2inputs[bodyid][roi]
-                    roitot = 0
-                    globtot = body2incount[bodyid]
-                    insize = globtot
-                    roi2normincount = {}
-                    roi2normoutcount = {}
-                    for (count, roiinfo) in partners:
-                        roitot += count
+            for roi in firstrois:
+                secroifeat = [0]*2*len(secrois)
+                if bodyid in body2io:
+                    if roi in body2io[bodyid]:
+                        partners = body2io[bodyid][roi]
+                        roitot = 0
+                        roi2normincount = {}
+                        roi2normoutcount = {}
+                        for (count, roiinfo) in partners:
+                            roitot += count
 
-                    for (count, roiinfo) in partners:
-                        pretot = 0
-                        posttot = 0
+                        for (count, roiinfo) in partners:
+                            pretot = 0
+                            posttot = 0
+                            for secroi in secrois:
+                                if secroi in roiinfo:
+                                    pretot += roiinfo[secroi]["pre"]
+                                    posttot += roiinfo[secroi]["post"]
+                            for secroi in secrois:
+                                if secroi in roiinfo:
+                                    if secroi not in roi2normincount:
+                                        roi2normincount[secroi] = 0
+                                    if roiinfo[secroi]["pre"] > 0:
+                                        roi2normincount[secroi] += ((roiinfo[secroi]["pre"]/pretot)*(count/roitot))*(roitot)
+
+                                    if secroi not in roi2normoutcount:
+                                        roi2normoutcount[secroi] = 0
+                                    if roiinfo[secroi]["post"] > 0:
+                                        roi2normoutcount[secroi] += ((roiinfo[secroi]["post"]/posttot)*(count/roitot))*(roitot)
+
+                        # load input features
+                        secroifeat = []
                         for secroi in secrois:
-                            if secroi in roiinfo:
-                                pretot += roiinfo[secroi]["pre"]
-                                posttot += roiinfo[secroi]["post"]
+                            if secroi in roi2normincount:
+                                secroifeat.append(roi2normincount[secroi])
+                            else:
+                                secroifeat.append(0)
+
+                        # load output features
                         for secroi in secrois:
-                            if secroi in roiinfo:
-                                if secroi not in roi2normincount:
-                                    roi2normincount[secroi] = 0
-                                if roiinfo[secroi]["pre"] > 0:
-                                    roi2normincount[secroi] += ((roiinfo[secroi]["pre"]/pretot)*(count/roitot))*(roitot/globtot)
+                            if secroi in roi2normoutcount:
+                                secroifeat.append(roi2normoutcount[secroi])
+                            else:
+                                secroifeat.append(0)
+                featurevec.extend(secroifeat)
+            features_arr[iter1] = featurevec
+    load_features(features_in, inrois, body2inputs)
+    load_features(features_out, outrois, body2outputs)
 
-                                if secroi not in roi2normoutcount:
-                                    roi2normoutcount[secroi] = 0
-                                if roiinfo[secroi]["post"] > 0:
-                                    roi2normoutcount[secroi] += ((roiinfo[secroi]["post"]/posttot)*(count/roitot))*(roitot/globtot)
+    def set_features(features_arr, firstrois, dilim):
+        # construct dataframes for the features
+        featurenames = []
+        equivclasses = {}
 
-
-                    # load input features
-                    secroifeat = []
-                    for secroi in secrois:
-                        if secroi in roi2normincount:
-                            secroifeat.append(roi2normincount[secroi])
-                        else:
-                            secroifeat.append(0)
-
-                    # load output features
-                    for secroi in secrois:
-                        if secroi in roi2normoutcount:
-                            secroifeat.append(roi2normoutcount[secroi])
-                        else:
-                            secroifeat.append(0)
-            featurevec.extend(secroifeat)
-
-        outsize = 0
-        for roi in outrois:
-            secroifeat = [0]*2*len(secrois)
-            if bodyid in body2outputs:
-                if roi in body2outputs[bodyid]:
-                    partners = body2outputs[bodyid][roi]
-                    roitot = 0
-                    globtot = body2outcount[bodyid]
-                    outsize = globtot
-                    roi2normincount = {}
-                    roi2normoutcount = {}
-                    for (count, roiinfo) in partners:
-                        roitot += count
-
-                    for (count, roiinfo) in partners:
-                        pretot = 0
-                        posttot = 0
-                        for secroi in secrois:
-                            if secroi in roiinfo:
-                                pretot += roiinfo[secroi]["pre"]
-                                posttot += roiinfo[secroi]["post"]
-                        for secroi in secrois:
-                            if secroi in roiinfo:
-                                if secroi not in roi2normincount:
-                                    roi2normincount[secroi] = 0
-                                if roiinfo[secroi]["pre"] > 0:
-                                    roi2normincount[secroi] += ((roiinfo[secroi]["pre"]/pretot)*(count/roitot))*(roitot/globtot)
-
-                                if secroi not in roi2normoutcount:
-                                    roi2normoutcount[secroi] = 0
-                                if roiinfo[secroi]["post"] > 0:
-                                    roi2normoutcount[secroi] += ((roiinfo[secroi]["post"]/posttot)*(count/roitot))*(roitot/globtot)
-
-                    # load input features
-                    secroifeat = []
-                    for secroi in secrois:
-                        if secroi in roi2normincount:
-                            secroifeat.append(roi2normincount[secroi])
-                        else:
-                            secroifeat.append(0)
-
-                    # load output features
-                    for secroi in secrois:
-                        if secroi in roi2normoutcount:
-                            secroifeat.append(roi2normoutcount[secroi])
-                        else:
-                            secroifeat.append(0)
-            featurevec.extend(secroifeat)
-        featureszarray[iter1] = [insize, outsize]
-        featurearray[iter1] = featurevec
-
-
-    # construct dataframes for the features
-    featurenames = []
-    equivclasses = {}
-
-    for froi in inrois:
-        if len(roi2roi) > 0:
+        for froi in firstrois:
             froi = roi2roi[froi]
-
-        for sroi in secrois:
-            key = froi + "<=" + "(" + sroi +"<=)"
-            if len(roi2roi) > 0:
+            
+            for sroi in secrois:
                 sroi = roi2roi[sroi]
-                key = froi + "<=" + "(" + sroi +"<=)"
+                key = froi + dilim + "(" + sroi +"<=)"
                 if key in equivclasses:
                     newkey = key + "-" + str(len(equivclasses[key]))
                     equivclasses[key].append(newkey)
                     key = newkey
                 else:
                     equivclasses[key] = [key]
-            featurenames.append(key)
-        for sroi in secrois:
-            key = froi + "<=" + "(" + sroi + "=>)"
-            if len(roi2roi) > 0:
+                featurenames.append(key)
+            for sroi in secrois:
                 sroi = roi2roi[sroi]
-                key = froi + "<=" + "(" + sroi +"=>)"
+                key = froi + dilim + "(" + sroi +"=>)"
                 if key in equivclasses:
                     newkey = key + "-" + str(len(equivclasses[key]))
                     equivclasses[key].append(newkey)
                     key = newkey
                 else:
                     equivclasses[key] = [key]
-            featurenames.append(key)
-    for froi in outrois:
-        if len(roi2roi) > 0:
-            froi = roi2roi[froi]
+                featurenames.append(key)
+        features = pd.DataFrame(featurearray, index=neuronlist, columns=featurenames) 
         
-        for sroi in secrois:
-            key = froi + "=>" + "(" + sroi +"<=)"
-            if len(roi2roi) > 0:
-                sroi = roi2roi[sroi]
-                key = froi + "=>" + "(" + sroi +"<=)"
-                if key in equivclasses:
-                    newkey = key + "-" + str(len(equivclasses[key]))
-                    equivclasses[key].append(newkey)
-                    key = newkey
-                else:
-                    equivclasses[key] = [key]
-            featurenames.append(key)
-        for sroi in secrois:
-            key = froi + "=>" + "(" + sroi + "=>)"
-            if len(roi2roi) > 0:
-                sroi = roi2roi[sroi]
-                key = froi + "=>" + "(" + sroi +"=>)"
-                if key in equivclasses:
-                    newkey = key + "-" + str(len(equivclasses[key]))
-                    equivclasses[key].append(newkey)
-                    key = newkey
-                else:
-                    equivclasses[key] = [key]
-            featurenames.append(key)
-    
-    features = pd.DataFrame(featurearray, index=neuronlist, columns=featurenames) 
-    
-    if len(equivclasses):
-        equivlists = []
-        for key, arr in equivclasses.items():
-            equivlists.append(arr)
-        
-        features = _sort_equiv_features(features, equivlists)
-    
-    features_sz = pd.DataFrame(featureszarray, index=neuronlist, columns=["post", "pre"]) 
-   
-    if preprocess:
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.preprocessing import normalize
-  
-        features_arr = features.values
+        if len(equivclasses):
+            equivlists = []
+            for key, arr in equivclasses.items():
+                equivlists.append(arr)
+            
+            features = _sort_equiv_features(features, equivlists)
+        return features
+    set_features(features_in, inrois, "<=")
+    set_features(features_in, outrois, "=>")
 
-        scaledfeatures = StandardScaler().fit_transform(features_arr)
-        aux_features_arr = features_sz.values
-        aux_scaledfeatures = StandardScaler().fit_transform(aux_features_arr)
-    
-        # ensure rows have the same magnitude -- this hopefully does not
-        # impact the original vectors too much since each row should probably
-        # be normalized in some way.
-        features_norm = normalize(features_arr, axis=1, norm='l2')
-        scaledfeatures_norm = normalize(scaledfeatures, axis=1, norm='l2')
+    return postprocess(features_in, features_out)
 
-        scaled_featnames=[]
-        for name in featurenames:
-            scaled_featnames.append(str(name)+"-s")
-
-        features_normdf = pd.DataFrame(features_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
-        scaledfeatures_normdf = pd.DataFrame(scaledfeatures_norm, index=features.index.values.tolist(), columns=scaled_featnames)
-        aux_scaledfeaturesdf = pd.DataFrame(aux_scaledfeatures, index=features.index.values.tolist(), columns=features_sz.columns.values.tolist())
-
-        return combine_features([features_normdf, scaledfeatures_normdf, aux_scaledfeaturesdf], wgts)
-
-    return features, features_sz
-
-def combine_features(feature_list, wgt_list):
-    """Combines features based on provided weights.
-
-    Args:
-        feature_list (list): list of dataframes contain features
-        wgt_list: weight to associate with each set of features
-    Returns:
-        (dataframe): A combined set of features
-
-    Note: all features should have the same number of rows.
-    """
-    nfeature_list = []
-    featurenames = []
-
-    for idx, wgt in enumerate(wgt_list):
-        nfeature_list.append(feature_list[idx].values*wgt)
-        featurenames.extend(feature_list[idx].columns.values.tolist())
-
-    combofeatures = np.concatenate(tuple(nfeature_list), axis=1)
-    return pd.DataFrame(combofeatures, index=feature_list[0].index.values.tolist(), columns=featurenames) 
-
-
-def reduce_features(features, num_components=400):
-    """Reduce dimensionality of features.
-
-    This function wraps PCA.
-
-    Args:
-        features (dataframe): matrix of features
-        num_components (int): number of pca components
-    Returns:
-        dataframe: A matrix contain features that can be used for clustering.
-    """
-
-    from sklearn.decomposition import PCA
-    pca_num = min(features.shape[1], num_components)
-    pca_num = min(pca_num, features.shape[0])
-    pca = PCA(n_components=pca_num)
-    principalComponents = pca.fit_transform(features)
-    print(f"PCA Explained Variance: {sum(pca.explained_variance_ratio_)}")
-    
-    return pd.DataFrame(principalComponents, index=features.index.values.tolist())
-
-
-def nonlinear_reduce_features(features, num_components=2):
-    """Non-linear feature reduction.
-    """
-    from sklearn.manifold import TSNE
-    reducedfeatures = TSNE(n_components=num_components).fit_transform(features.values)
-    return pd.DataFrame(reducedfeatures, index=features.index.values.tolist())
-
-def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_restriction=None,
-        minconn=3, collapse_type=True, normalize=True, preprocess=True, wgts=[0.8,0.1,0.1], customtypes={}, sort_types=False, dump_replay=False, replay_data = None, noInput = False, noOutput = False):
+def compute_connection_similarity_features(npclient, dataset, neuronlist,
+        use_saved_types=True, customtypes={}, postprocess=sigmoid_process(),
+        sort_types=True, minconn=3, roi_restriction=None, dump_replay=False, replay_data = None):
     """Computes an pairwise adjacency matrix for the given set of neurons.
 
     This function looks at inputs and outputs for the set of neurons.  The connections
@@ -564,28 +360,24 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
     adjacency matrix will sort the body ids based on clustering.
 
     Args:
-        neuronlist (list): list of body ids
-        dataset (str): name of neuprint dataset
         npclient (object): neuprint client object
-        roi_restriction (list): ROIs to restrict feature extractio (default all)
+        dataset (str): name of neuprint dataset
+        neuronlist (list): list of body ids
+        use_saved_types(boolean): use types stored in neuprint already to guide clustering
+        customtypes (dict): mapping of body ids to a cluster id (over-rules pre-exising types)
+        postprocess (func): set with *_process function (each function allows users to set input and output to 0)
+        (other paramters)
+        sort_types (boolean): True to sort, False to collapse
         minconn (int): Only consider connections >= minconn
-        collapse_type (boolean): If true, clustering uses existing cell type info
-        normalize (boolean): If true, each row is normalized to a unit vector
-        preprocess (boolean): if true, features produced by the algorithm are combined in weighted manner
-        wgts (list): a list of weights for each feature set (unscaled vs scaled vs size features)
-        customtypes (dict): mapping of body ids to a cluster id
-        sort_types (boolean): if true, do not collapse types, sort them
+        roi_restriction (list): ROIs to restrict feature extraction (default: no restriction)
         dump_replay (boolean): dumps features after parsing neuprint
         replay_data (tuple): data to enable replay
     Returns:
-        (dataframe): Distance matrix between provided neurons
+        dataframe: index: body ids; columns: different features 
     
-
-    Note: only connection to traced neurons are considered..
+    Note: only connection to traced neurons are considered.
 
     """
-
-   
     # set of all common input and outputs
     commonin = set()
     commonout = set()
@@ -597,12 +389,11 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
 
     body2type = {}
   
-    
-    features_arr = None
-    features_size_arr = None
+    features_in = None
+    features_out = None
     
     if replay_data is not None:
-        features_arr, features_size_arr, commonin, commonout, body2type = replay_data 
+        features_in, features_out, commonin, commonout, body2type = replay_data 
     else:
         for iter1 in range(0, len(neuronlist), 100):
             currlist = neuronlist[iter1:iter1+100]
@@ -619,9 +410,9 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
 
             print(f"fetch batch {iter1}")
 
-            if not noOutput:
-                outres = npclient.fetch_custom(outputsquery)
-                for idx, row in outres.iterrows():
+            def collect_features(query, io_list, common_io):
+                res = npclient.fetch_custom(query)
+                for idx, row in res.iterrows():
                     if row["body1"] == row["body2"]:
                         continue
                     feat_type = row["body2"]
@@ -629,13 +420,13 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
                     if not sort_types:
                         if feat_type in customtypes:
                             feat_type = customtypes[feat_type]
-                        elif collapse_type and row["type"] is not None and row["type"] != "":
+                        elif use_saved_types and row["type"] is not None and row["type"] != "":
                             feat_type = row["type"]
                     else:
                         common_type = ""
                         if feat_type in customtypes:
                             common_type = customtypes[feat_type]
-                        elif collapse_type and row["type"] is not None and row["type"] != "":
+                        elif use_saved_types and row["type"] is not None and row["type"] != "":
                             common_type = row["type"]
                         if common_type != "":
                             body2type[feat_type] = common_type
@@ -650,130 +441,141 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
                         totconn += val["post"]
 
                     if totconn >= minconn:
-                        if row["body1"] not in outputs_list:
-                            outputs_list[row["body1"]] = {}
-                        if feat_type not in outputs_list[row["body1"]]:
-                            outputs_list[row["body1"]][feat_type] = 0
-                        outputs_list[row["body1"]][feat_type] += totconn
-                        commonout.add(feat_type)
+                        if row["body1"] not in io_list:
+                            io_list[row["body1"]] = {}
+                        if feat_type not in io_list[row["body1"]]:
+                            io_list[row["body1"]][feat_type] = 0
+                        io_list[row["body1"]][feat_type] += totconn
+                        common_io.add(feat_type)
+    
+            collect_features(outputsquery, outputs_list, commonout)
+            collect_features(inputsquery, inputs_list, commonin)
 
-            if not noInput:
-                inres = npclient.fetch_custom(inputsquery)
-                for idx, row in inres.iterrows():
-                    if row["body1"] == row["body2"]:
-                        continue
-                    feat_type = row["body2"]
-
-                    if not sort_types:
-                        if feat_type in customtypes:
-                            feat_type = customtypes[feat_type]
-                        elif collapse_type and row["type"] is not None and row["type"] != "":
-                            feat_type = row["type"]
-                    else:
-                        common_type = ""
-                        if feat_type in customtypes:
-                            common_type = customtypes[feat_type]
-                        elif collapse_type and row["type"] is not None and row["type"] != "":
-                            common_type = row["type"]
-                        if common_type != "":
-                            body2type[feat_type] = common_type
-
-                    roiinfo = json.loads(row["info"])
-
-                    totconn = 0
-                    for roi, val in roiinfo.items():
-                        if roi_restriction is not None:
-                            if roi not in roi_restriction:
-                                continue
-                        totconn += val["post"]
-
-                    if totconn >= minconn:
-                        if row["body1"] not in inputs_list:
-                            inputs_list[row["body1"]] = {}
-                        if feat_type not in inputs_list[row["body1"]]:
-                            inputs_list[row["body1"]][feat_type] = 0
-                        inputs_list[row["body1"]][feat_type] += totconn
-                        commonin.add(feat_type)
-
-
-        # populate feature array
-        features_arr = np.zeros((len(neuronlist), len(commonin) + len(commonout)))
-        features_size_arr = np.zeros((len(neuronlist), 2))
-
-        for iter1, bodyid in enumerate(neuronlist):
-            featurevec = [0]*(len(commonin)+len(commonout))
-
-            # load input features
-            tot_in = 0
-            if bodyid in inputs_list:
-                for input in commonin:
-                    if input in inputs_list[bodyid]:
-                        val = inputs_list[bodyid][input]
-                        tot_in += val
-                for idx, input in enumerate(commonin):
-                    if input in inputs_list[bodyid]:
-                        val = inputs_list[bodyid][input]
-                        if normalize:
-                            val /= tot_in
-                        featurevec[idx] = val
-
-            # load output features
-            tot_out = 0
-            if bodyid in outputs_list:
-                for output in commonout:
-                    if output in outputs_list[bodyid]:
-                        val = outputs_list[bodyid][output]
-                        tot_out += val
-                for idx, output in enumerate(commonout):
-                    if output in outputs_list[bodyid]:
-                        val = outputs_list[bodyid][output]
-                        if normalize:
-                            val /= tot_out
-                        featurevec[len(commonin)+idx] = val
+        features_in = np.zeros((len(neuronlist), len(commonin)))
+        features_out = np.zeros((len(neuronlist), len(commonout)))
         
-            features_arr[iter1] = featurevec
-            features_size_arr[iter1] = [tot_in, tot_out]
+        def load_features(features_arr, io_list, common_io):
+            for iter1, bodyid in enumerate(neuronlist):
+                featurevec = [0]*len(common_io)
+
+                # load input features
+                if bodyid in io_list:
+                    for idx, io in enumerate(common_io):
+                        if io in io_list[bodyid]:
+                            val = io_list[bodyid][io]
+                            featurevec[idx] = val
+                features_arr[iter1] = featurevec
+
+        load_features(features_in, inputs_list, commonin)
+        load_features(features_out, outputs_list, commonout)
 
         # return intermediate data if requested
         if dump_replay:
-            return (features_arr, features_size_arr, commonin, commonout, body2type)
+            return (features_in, features_out, commonin, commonout, body2type)
 
-    featurenames = []
-    equivclasses = {}
-   
-    # if body2type is loaded, sort type connectivity
-    for input in commonin:
-        key = str(input)+"=>"
-        if input in body2type:
-            key = "c-" + str(body2type[input]) + "(" + str(input) + ")=>"
-            if body2type[input] in equivclasses:
-                equivclasses[body2type[input]].append(key)
-            else:
-                equivclasses[body2type[input]] = [key]
-        featurenames.append(key)
-    for output in commonout:
-        key = str(output)+"<="
-        if output in body2type:
-            key = "c-" + str(body2type[output]) + "(" + str(output) + ")<="
-            if body2type[output] in equivclasses:
-                equivclasses[body2type[output]].append(key)
-            else:
-                equivclasses[body2type[output]] = [key]
-        featurenames.append(key)
+    def set_features(features_arr, common_io, dilin)
+        featurenames = []
+        equivclasses = {}
 
-    features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames) 
+        # if body2type is loaded, sort type connectivity
+        for io in common_io:
+            key = str(io)+dilin
+            if io in body2type:
+                key = "c-" + str(body2type[io]) + "(" + str(io) + ")" + dilin
+                if body2type[io] in equivclasses:
+                    equivclasses[body2type[io]].append(key)
+                else:
+                    equivclasses[body2type[io]] = [key]
+            featurenames.append(key)
+        features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames) 
+
+        # sort connections to neurons in the same class
+        if len(equivclasses):
+                equivlists = []
+                for key, arr in equivclasses.items():
+                    equivlists.append(arr)
+                
+                features = _sort_equiv_features(features, equivlists)
+        return features
+
+    features_in = set_features(features_in, commonin, "=>")
+    features_out = set_features(features_out, commonout, "<=")
+
+    return postprocess(features_in, features_out)
+
+
+def signmoid_process(start = 10, stop = 30, wgt_in = 0.5, wgt_out = 0.5):
+    """Applies a sigmoid shifted by the start and stop range value.
+
+    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
+    """
     
-    # sort connections to neurons in the same class
-    if len(equivclasses):
-            equivlists = []
-            for key, arr in equivclasses.items():
-                equivlists.append(arr)
-            
-            features = _sort_equiv_features(features, equivlists)
-        
-    features_sz = pd.DataFrame(features_size_arr, index=neuronlist, columns=["post", "pre"]) 
+    def postprocess(features_in, features_out):
+        #wgt_in = wgt_in**(1/2)
+        #wgt_out = wgt_out**(1/2)
    
-    if preprocess:
+        # create sigmoid function
+        shift = (stop-start)/2+start
+        scale = (stop-start)/4
+        func = np.vectorize(lambda x: 1 / (1 + np.exp(-((x-shift)/scale))))
+
+        features_in = features_in.apply(func)
+        features_out = features_out.apply(func)
+        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
+
+    return postprocess
+
+def clipped_process(start = 3, stop = 50, wgt_in = 0.5, wgt_out = 0.5):
+    """Clips values at the top and bottom of the range to 0 and the stop value respectively.
+
+    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
+    """
+    def postprocess(features_in, features_out):
+        #wgt_in = wgt_in**(1/2)
+        #wgt_out = wgt_out**(1/2)
+   
+        # create clip function
+        func = np.vectorize(lambda x: 0 if x < start else (stop if x > stop else x))
+
+        features_in = features_in.apply(func)
+        features_out = features_out.apply(func)
+        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
+
+    return postprocess
+
+def noop_process(wgt_in, wgt_out):
+    """Simply uses input and output weights as is with no post-processing
+    except for wgt_in and wgt_out.
+    
+    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
+    """
+
+    def postprocess(features_in, features_out):
+        #wgt_in = wgt_in**(1/2)
+        #wgt_out = wgt_out**(1/2)
+        
+        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
+
+    return postprocess
+
+def scaled_process_old(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
+    """Disable input or output by setting the weight to 0.
+
+    Note: weights are simple scaling of features
+
+    default wgts for roioverlap_features and projection features is [0.25,0.6,0.15]
+    """
+
+    def postprocess(features_in, features_out):
+        # re-create size array, norm everything
+        sz_in = pd.DataFrame(features_in.sum(axis=1), columns=["post"])
+        sz_out = pd.DataFrame(features_out.sum(axis=1), columns=["pre"])
+        features_in = features_in.div(features_in.sum(axis=1), axis=0)
+        features_out = features_out.div(features_in.sum(axis=1), axis=0)
+
+        features = _combine_features([features_in, features_out], [wgt_in, wgt_out])
+        features_sz = _combine_features([sz_in, sz_out], [wgt_in, wgt_out])
+
         from sklearn.preprocessing import StandardScaler
         from sklearn.preprocessing import normalize
   
@@ -790,16 +592,17 @@ def compute_connection_similarity_features(neuronlist, dataset, npclient, roi_re
         scaledfeatures_norm = normalize(scaledfeatures, axis=1, norm='l2')
 
         scaled_featnames=[]
-        for name in featurenames:
-            scaled_featnames.append(str(name)+"-2")
+        for name in features.columns.to_list():
+            scaled_featnames.append(str(name)+"-s")
 
         features_normdf = pd.DataFrame(features_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
         scaledfeatures_normdf = pd.DataFrame(scaledfeatures_norm, index=features.index.values.tolist(), columns=scaled_featnames)
         aux_scaledfeaturesdf = pd.DataFrame(aux_scaledfeatures, index=features.index.values.tolist(), columns=features_sz.columns.values.tolist())
 
-        return combine_features([features_normdf, scaledfeatures_normdf, aux_scaledfeaturesdf], wgts)
+        return _combine_features([features_normdf, scaledfeatures_normdf, aux_scaledfeaturesdf], wgts)
 
-    return features, features_sz
+    return postprocess 
+
 
 def find_max_differences(features, body1, body2, numfeatures = 10):
     """Find features that are most different for body1 and body2.
@@ -860,59 +663,101 @@ def find_max_variance(features, numfeatures=40):
 
     return features_restr
 
+
+def reduce_features(features, num_components=400):
+    """Reduce dimensionality of features.
+
+    This function wraps PCA.
+
+    Args:
+        features (dataframe): matrix of features
+        num_components (int): number of pca components
+    Returns:
+        dataframe: A matrix contain features that can be used for clustering.
+    """
+
+    from sklearn.decomposition import PCA
+    pca_num = min(features.shape[1], num_components)
+    pca_num = min(pca_num, features.shape[0])
+    pca = PCA(n_components=pca_num)
+    principalComponents = pca.fit_transform(features)
+    print(f"PCA Explained Variance: {sum(pca.explained_variance_ratio_)}")
+    
+    return pd.DataFrame(principalComponents, index=features.index.values.tolist())
+
+
+def nonlinear_reduce_features(features, num_components=2):
+    """Non-linear feature reduction.
+    """
+    from sklearn.manifold import TSNE
+    reducedfeatures = TSNE(n_components=num_components).fit_transform(features.values)
+    return pd.DataFrame(reducedfeatures, index=features.index.values.tolist())
+
+
+
+##### helper functions #########
+
+
+def _combine_features(feature_list, wgt_list):
+    """Combines features based on provided weights.
+
+    Args:
+        feature_list (list): list of dataframes contain features
+        wgt_list: weight to associate with each set of features
+    Returns:
+        (dataframe): A combined set of features
+
+    Note: all features should have the same number of rows.
+    """
+    nfeature_list = []
+    featurenames = []
+
+    for idx, wgt in enumerate(wgt_list):
+        # ignore really small values
+        if wgt > 0.0000001:
+            nfeature_list.append(feature_list[idx].values*wgt)
+            featurenames.extend(feature_list[idx].columns.values.tolist())
+
+    if len(nfeature_list) == 0:
+        raise RuntimeError("no features to combine")
+    combofeatures = np.concatenate(tuple(nfeature_list), axis=1)
+    return pd.DataFrame(combofeatures, index=feature_list[0].index.values.tolist(), columns=featurenames) 
+
+
+
 def _sort_equiv_features(features, equivlists):
     """Sort related features from big to small.
-    """
-  
-    for idx, row in features.iterrows():
-        rowdict = row.to_dict()
-        for group in equivlists:
-            vals = []
-            labels = []
-            for item in group:
-                vals.append(rowdict[item])
-                labels.append(item)
-            vals.sort()
-            vals.reverse()
-            for idx2, label in enumerate(labels):
-                rowdict[label] = vals[idx2]
 
-        for idx2, cname in enumerate(row.index.tolist()):
-            row[idx2] = rowdict[cname] 
-
-        #for group in equivlists:
-            
-            #res = list(row[group])
-            #res.sort()
-            #res.reverse()
-            #row[group] = res
-            pass
-    return features
-
-    """ TODO -- parallelize
-    import dask.dataframe as ddf
-    def sortrows(row):
-        rowdict = row.to_dict()
-        for group in equivlists:
-            vals = []
-            labels = []
-            for item in group:
-                vals.append(rowdict[item])
-                labels.append(item)
-            vals.sort()
-            vals.reverse()
-            for idx2, label in enumerate(labels):
-                rowdict[label] = vals[idx2]
-
-        for idx2, cname in enumerate(row.index.tolist()):
-            row[idx2] = rowdict[cname]
-        row
-
-    df_dask = ddf.from_pandas(features, npartitions=4)
-    return df_dask.apply(lambda x: sortrows(x), meta=('str'), axis=1).compute(scheduler='multiprocessing')
+    Note: this function uses multiple processes
     """
 
+    # break dataframe into chunks
+    CHUNK_SIZE = 100
+    df_chunks = []
+    for chunk_start in range(0, len(features), CHUNK_SIZE):
+        df_chunks.append( features.iloc[chunk_start:(chunk_start+CHUNK_SIZE)] )
+
+    def process_chunk(df_chunk):
+        for idx, row in df_chunk.iterrows():
+            rowdict = row.to_dict()
+            for group in equivlists:
+                vals = []
+                labels = []
+                for item in group:
+                    vals.append(rowdict[item])
+                    labels.append(item)
+                vals.sort(reverse=True)
+                for idx2, label in enumerate(labels):
+                    rowdict[label] = vals[idx2]
+
+            for idx2, cname in enumerate(row.index.tolist()):
+                row[idx2] = rowdict[cname] 
+        return df_chunk
 
 
-
-
+    # process chunks in parallel
+    from multiprocessing import Pool
+    with Pool(processes=None) as pool:
+        sorted_chunks = pool.map(process_chunk, df_chunks)
+    
+    return pd.concat(sorted_chunks)
