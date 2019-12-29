@@ -7,28 +7,30 @@ import json
 import numpy as np
 import pandas as pd
 
-
-def save_clustering(clusters, filename):
-    """Save clusters to disk.
+def hierarchical_cluster(features):
+    """Compute a hierarchical clustering for a given set of features.
     
     Args:
-        clusters (dataframe): bodyid, type mapping for a given clustering
-        filename (str): name of file
-    """
-
-    clusters.to_feather(filename)
-
-def load_clustering(filename):
-    """Load clusters from disk.
-    
-    Args:
-        filename (str): name of file
+        features (dataframe): matrix of features
     Returns:
-        dataframe: bodyid and type mappings for a given cluster 
+        (HClusterobject): wraps cluster resultss
     """
+    distArray = compute_distance_matrix(features)
+    from scipy.cluster.hierarchy import linkage
+    clustering = linkage(distArray.values, 'ward')
+    return HCluster(clustering, features.index.values.tolist(), features)
 
-    return pd.read_feather(filename, columns=None, use_threads=True)
+def kmeans_cluster(features, num_clusters):
+    """Run kmeans clustering.
 
+    Args:
+        features (dataframe): matrix of features
+    Returns:
+        (KMeans): kmeans object result
+    """
+    from sklearn.cluster import KMeans
+
+    return KCluster(KMeans(n_clusters=num_clusters, random_state=0).fit(features), features.index.values.tolist(), features)
 
 def compute_distance_matrix(features):
     """Compute a distance matrix between the neurons.
@@ -48,10 +50,45 @@ def compute_distance_matrix(features):
 
     return pd.DataFrame(dist_matrix, index=features.index.values.tolist(), columns=features.index.values.tolist())
 
+def sort_distance_matrix(distance):
+    """Sort the distance matrix based on hierarchical clustering.
 
-def report_diffs(part1, part2, features1 = None, features2 = None):
+    Ars:
+        distance (dataframe): NxN dataframe
+    Returns:
+        (dataframe): distance matrix with sorted indices
+    """
+
+    clustering = linkage(distance.values, 'ward')
+    sorted_indices = _sort_indices(clustering, len(clustering), len(clustering)*2-2)
+    bodyids = distance.columns.values.tolist()
+    neworder = []
+    for idx in sorted_indices:
+        neworder.append(bodyids[idx])
+    return distance.reindex(index=neworder, columns=neworder)
+
+def find_closest_neurons(neuron, features):
+    """Find closest neurons to the given neuron.
+
+    Args:
+        neuron (int): neuron id
+        features (dataframe): array contain featurs describing the neuron and related neurons.
+    Returns:
+        (series): data series for body ids and distance based on features
+    """
+    dist = compute_distance_matrix(features)
+    closest_neurons = dist[neuron]
+    return dist[neuron].sort_values(ascending=True)
+
+def report_diffs(type2bodies1, type2bodies2, features1 = None, features2 = None):
     """Return the bodies that are in different clusters. Ordered by distance if features provided.
-
+    
+    Args:
+        type2bodies1 (dict): cluster results from get_partitions
+        type2bodies2 (dict): cluster results from get_partitions
+        features1 (dataframe): (optional) features for the first cluster 
+        features2 (dataframe): (optional) features for the second cluster 
+    
     Returns:
         (list, list): Lists of pairs of bodies in different clusters compared to the
         first partition and second partition respectively.  Sorted so the
@@ -59,62 +96,36 @@ def report_diffs(part1, part2, features1 = None, features2 = None):
         (a large value means the two bodies are in very disimilar with respect
         to one set of features despite being similar in the other feautures)
     """
-    
-    # get part1 fragments
-    # get type => [bodyid...]
-    type2bodies = {}
-    for bodyid, cluster in part1.items():
-        if cluster not in type2bodies:
-            type2bodies[cluster] = []
-        type2bodies[cluster].append(bodyid)
+   
+    part1 = {}
+    part2 = {}
+    for cid, bodylist in type2bodies1.items():
+        for bodyid in bodylist:
+            part1[bodyid] = cid
+    for cid, bodylist in type2bodies2.items():
+        for bodyid in bodylist:
+            part2[bodyid] = cid
 
-    falsepart1 = []
-    for cluster, bodyids in type2bodies.items():
-        for iter1 in range(len(bodyids)):
-            for iter2 in  range(iter1+1, len(bodyids)):
-                if part2[bodyids[iter1]] != part2[bodyids[iter2]]:
-                    if features2 is not None:
-                        v1 = features2.loc[bodyids[iter1]].values
-                        v2 = features2.loc[bodyids[iter2]].values
-                        diffvec = (v1-v2)**2
-                        diff = (diffvec.sum())**(1/2)
-    
-                        # difference between differences
-                        v1 = features1.loc[bodyids[iter1]].values
-                        v2 = features1.loc[bodyids[iter2]].values
-                        diffvec = (v1-v2)**2
-                        diff2 = (diffvec.sum())**(1/2)
-                        falsepart1.append((diff-diff2, diff, bodyids[iter1], bodyids[iter2]))
+    def extract_overlap(features1, features2, type2bodies, part2):
+        falsepart1 = []
+        for cluster, bodyids in type2bodies.items():
+            for iter1 in range(len(bodyids)):
+                for iter2 in  range(iter1+1, len(bodyids)):
+                    if part2[bodyids[iter1]] != part2[bodyids[iter2]]:
+                        if features2 is not None:
+                            v1 = features2.loc[bodyids[iter1]].values
+                            v2 = features2.loc[bodyids[iter2]].values
+                            diffvec = (v1-v2)**2
+                            diff = (diffvec.sum())**(1/2)
+                            falsepart1.append((diff, bodyids[iter1], bodyids[iter2]))
+                        else:
+                            falsepart1.append((bodyids[iter1], bodyids[iter2]))
+        falsepart1.sort()
+        falsepart1.reverse() 
+        return falsepart1
 
-    # get part2 fragments
-    type2bodies = {}
-    for bodyid, cluster in part2.items():
-        if cluster not in type2bodies:
-            type2bodies[cluster] = []
-        type2bodies[cluster].append(bodyid)
-
-    falsepart2 = []
-    for cluster, bodyids in type2bodies.items():
-        for iter1 in range(len(bodyids)):
-            for iter2 in  range(iter1+1, len(bodyids)):
-                if part1[bodyids[iter1]] != part1[bodyids[iter2]]:
-                    if features1 is not None:
-                        v1 = features1.loc[bodyids[iter1]].values
-                        v2 = features1.loc[bodyids[iter2]].values
-                        diffvec = (v1-v2)**2
-                        diff = (diffvec.sum())**(1/2)
-                        
-                        # difference between differences
-                        v1 = features2.loc[bodyids[iter1]].values
-                        v2 = features2.loc[bodyids[iter2]].values
-                        diffvec = (v1-v2)**2
-                        diff2 = (diffvec.sum())**(1/2)
-                        falsepart2.append((diff-diff2, diff, bodyids[iter1], bodyids[iter2]))
-
-    falsepart1.sort()
-    falsepart1.reverse() 
-    falsepart2.sort()
-    falsepart2.reverse()
+    falsepart1 = extract_overlap(features1, features2, type2bodies1, part2) 
+    falsepart2 = extract_overlap(features2, features1, type2bodies2, part1) 
     
     return falsepart1, falsepart2
 
@@ -211,7 +222,8 @@ class HCluster:
 
 
     def get_partitions(self, num_parts, return_max=False):
-        """Returns cluster partitions for specified number of clusters.
+        """Returns cluster partitions for specified number of clusters
+        (type2bodies dict and bodyid=>cluster id df)
 
         Args:
             num_parts (int): number of cluster partitions
@@ -259,6 +271,7 @@ class KCluster:
 
     def get_partitions(self):
         """Returns cluster partitions where the first element is the closest to center.
+        (type2bodies dict and bodyid=>cluster id df)
 
         Returns:
             (dict, dataframe): {cluster id: [body1, body2,...]}, "bodyid", "cluster id"
@@ -410,77 +423,9 @@ def _compute_vi(labels, gt):
 
     return merge_vi, split_vi, final_table
 
-
-
-
-
-def hierarchical_cluster(features):
-    """Compute a hierarchical clustering for a given set of features.
-    
-    Args:
-        features (dataframe): matrix of features
-    Returns:
-        (HClusterobject): wraps cluster resultss
-    """
-    from scipy.cluster.hierarchy import linkage
-    clustering = linkage(distArray, 'ward')
-    return HCluster(clustering, features.index.values.tolist(), features)
-
-def kmeans_cluster(features, num_clusters):
-    """Run kmeans clustering.
-
-    Args:
-        features (dataframe): matrix of features
-    Returns:
-        (KMeans): kmeans object result
-    """
-    from sklearn.cluster import KMeans
-
-    return KCluster(KMeans(n_clusters=num_clusters, random_state=0).fit(features), features.index.values.tolist(), features)
-
-
-def sort_distance_matrix(distance):
-    """Sort the distance matrix based on hierarchical clustering.
-
-    Ars:
-        distance (dataframe): NxN dataframe
-    Returns:
-        (dataframe): distance matrix with sorted indices
-    """
-
-    # ?! needs condensed matrix !! 
-    clustering = linkage(distance.values, 'ward')
-    sorted_indices = _sort_indices(clustering, len(clustering), len(clustering)*2-2)
-    bodyids = distance.columns.values.tolist()
-    neworder = []
-    for idx in sorted_indices:
-        neworder.append(bodyids[idx])
-    return distance.reindex(index=neworder, columns=neworder)
-
-def find_closest_neurons(neuron, features):
-    """Find closest neurons to the given neuron.
-
-    Args:
-        neuron (int): neuron id
-        features (dataframe): array contain featurs describing the neuron and related neurons.
-    Returns:
-        (series): data series for body ids and distance based on features
-    """
-    dist = compute_distance_matrix(features)
-    closest_neurons = dist[neuron]
-    return dist[neuron].sort_values(ascending=True)
-
-
-""" -- example for showing matrix
-plt.pcolormesh(dist_mat)
-plt.xlim([0,N])
-plt.ylim([0,N])
-plt.show()
-"""
-
 def _sort_indices(Z, N, cur_index):
     """Extracts ordered indices from dendrogram.
-    
+   
     From: https://gmarti.gitlab.io/ml/2017/09/07/how-to-sort-distance-matrix.html
     """
     if cur_index < N:
