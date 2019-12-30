@@ -1,7 +1,7 @@
 """Utility functions.
 """
 
-def extract_faninfanout(npclient, dataset, neuronlist, minconn=3):
+def extract_neighbors(npclient, dataset, neuronlist, minconn=3):
     """Find all neurons in fanin or fanout of list of neurons.
 
     Note: return list includes neuronlist

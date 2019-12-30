@@ -6,7 +6,8 @@ from . import cluster
 from . import utils
 
 def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster,
-        iterations=0,  postprocess_pro=None, postprocess_conn=None, saved_projection=""):
+        cluster_neighbors=False, iterations=0, postprocess_pro=None, postprocess_conn=None,
+        saved_projection=""):
     """Generate features through speculative iteration.
 
     The algorithm first generates features using neuron projections.  These
@@ -18,6 +19,7 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
         dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
         est_neuron_per_cluster (int): estimated number of neurons per cluster (set high?)
+        cluster_neighbors (boolean): use the upstream/downstream partners for initial  clustering with projection
         iterations (int): number of iterations to iteratively refine connectivity reesults
         (default 0: automatically determine the number of iterations):
         postprocess_pro (func): *_process function option for projection features
@@ -44,20 +46,25 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
         except:
             pass
 
+    num_neurons = len(neuronlist)
     # if not features are read from disk, compute features
     if features_pro is None:
+        new_neuronlist = neuronlist
+        if cluster_neighbors:
+            new_neuronlist = utils.extract_neighbors(npclient, dataset, neuronlist) 
+        num_neurons = len(new_neuronlist)
         # generate projection features or body id connectivity features
         if postprocess_pro is not None:
-            features_pro = features.extract_projection_features(npclient, dataset, neuronlist, postprocess=postprocess_pro)
+            features_pro = features.extract_projection_features(npclient, dataset, new_neuronlist, postprocess=postprocess_pro)
         else:
-            features_pro = features.extract_projection_features(npclient, dataset, neuronlist)
+            features_pro = features.extract_projection_features(npclient, dataset, new_neuronlist)
 
         if saved_projection != "":
             features.save_features(features_pro, saved_projection)
 
     # create (aggressive?) clusters
     hcluster = cluster.hierarchical_cluster(features_pro)
-    cluster2neuron, neuron2cluster = hcluster.get_partitions(len(neuronlist)//est_neuron_per_cluster)
+    cluster2neuron, neuron2cluster = hcluster.get_partitions(num_neurons//est_neuron_per_cluster)
     print("Computed projection clusters")
 
     features_type = None
@@ -77,7 +84,8 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
         customtypes = {}
         if neuron2cluster is not None:
             customtypes =  dict(zip(neuron2cluster["bodyid"], neuron2cluster["type"]))
-        
+
+        # ?! if I support fanin/fanout for pro features, need to keep those types around
         # add new cell type groupings
         p1, p2, p3, p4, old_body2type = replay_data
         old_body2type.update(customtypes)
