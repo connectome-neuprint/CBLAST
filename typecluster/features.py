@@ -32,7 +32,7 @@ def load_features(filename):
     return features
 
 def extract_roioverlap_features(npclient, dataset, neuronlist,
-        postprocess=sigmoid_process(70, 230, 1.0, 5.0), roilist=None):
+        postprocess=sigmoid_process(70, 230, 1.0, 5.0), sym_excl = ["(L)", "(R)"], roilist=None):
     """Extract simple ROI overlap features. 
 
     Args:
@@ -41,6 +41,7 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
         neuronlist (list): list of body ids
         postprocess (func): set with *_process function (each function allows users to set input and output to 0)
         (default sets outputs to have 5x weight of inputs as a hack for Dropholia polyadic connections)
+        sym_excl (list(str)): a list of substrings to exclude from the ROI list (specific to hemibrain for now)
         roilist (list): custom list of ROIs to use
     Returns:
         dataframe: index: body ids; columns: different features 
@@ -68,6 +69,15 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
     else:
         superrois = set(roilist)
 
+
+    # if left/right symmetry map ROIs to common name
+    roi2roi = {}
+    for roi in superrois:
+        troi = roi
+        for excl in sym_excl: 
+            troi = troi.replace(excl, "")
+        roi2roi[roi] = troi
+
     res = npclient.fetch_custom(overlapquery)
 
     bodyinfo_in = {}
@@ -79,13 +89,20 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
 
         for roi, val in roiinfo.items():
             if roi in superrois:
+                roi = roi2roi
                 if val["pre"] > PRE_IMPORTANCECUTOFF:
                     inrois.add(roi)
-                    bodyinfo_in[row["bodyId"]][roi] = val["pre"] 
+                    if roi in bodyinfo_in[row["bodyId"]]:
+                        bodyinfo_in[row["bodyId"]][roi] += val["pre"] 
+                    else:
+                        bodyinfo_in[row["bodyId"]][roi] = val["pre"] 
                 if val["post"] > POST_IMPORTANCECUTOFF:
                     outrois.add(roi)
-                    bodyinfo_out[row["bodyId"]][roi] = val["post"] 
-   
+                    if roi in bodyinfo_out[row["bodyId"]]:
+                        bodyinfo_out[row["bodyId"]][roi] += val["post"] 
+                    else:
+                        bodyinfo_out[row["bodyId"]][roi] = val["post"] 
+
       # generate feature vector for the projectome and the pre and post sizes
     features_in = np.zeros((len(neuronlist), len(inrois)))
     features_out = np.zeros((len(neuronlist), len(outrois)))
@@ -180,7 +197,7 @@ def extract_projection_features(neuronlist, dataset, npclient,
 
     # if left/right symmetry map ROIs to common name
     roi2roi = {}
-    for roi in roilist:
+    for roi in superrois:
         troi = roi
         for excl in sym_excl: 
             troi = troi.replace(excl, "")
