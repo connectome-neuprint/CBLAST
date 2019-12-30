@@ -3,18 +3,26 @@
 
 from . import features
 from . import cluster
+from . import utils
 
-def iterative_features(neuronlist, dataset, npclient, est_neuron_per_cluster, projection_init=True, iterative=True, collapse_types=False, saved_projection=""):
+def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster,
+        iterations=0,  postprocess_pro=None, postprocess_conn=None, saved_projection=""):
     """Generate features through speculative iteration.
 
+    The algorithm first generates features using neuron projections.  These
+    results are then fed into an interative calling of postprocess_conn.  For
+    more customization, call cblast_workflow.
+
     Args:
-        neuronlist (list): list of body ids
-        dataset (str): name of neuprint dataset
         npclient (object): neuprint client object
+        dataset (str): name of neuprint dataset
+        neuronlist (list): list of body ids
         est_neuron_per_cluster (int): estimated number of neurons per cluster (set high?)
-        projection_init (boolean): use projection features to seed initial clustering
-        iterative (boolean): iteratively refine features based on connectivity cluster results
-        collapse_types (boolean): true means to collapse types, false means to sort
+        iterations (int): number of iterations to iteratively refine connectivity reesults
+        (default 0: automatically determine the number of iterations):
+        postprocess_pro (func): *_process function option for projection features
+        postprocess_conn (func): *_process function option for connectivity features
+        
         saved_projection (str): location of file to store or restore features
    
     Return:
@@ -27,47 +35,45 @@ def iterative_features(neuronlist, dataset, npclient, est_neuron_per_cluster, pr
         mediumn, aggressive, etc).
     
     """
-    # TODO potentially use a distance threshold for initial clustering (or connectome clustering)
-
-    assert not collapse_types, "Does not support cell type collapsing"
-
     neuron2cluster = None
-    if projection_init:
 
-        features_pro = None
+    features_pro = None
+    if saved_projection != "":
+        try:
+            features_pro = features.load_features(saved_projection)
+        except:
+            pass
+
+    # if not features are read from disk, compute features
+    if features_pro is None:
+        # generate projection features or body id connectivity features
+        if postprocess_pro is not None:
+            features_pro = features.extract_projection_features(npclient, dataset, neuronlist, postprocess=postprocess_pro)
+        else:
+            features_pro = features.extract_projection_features(npclient, dataset, neuronlist)
+
         if saved_projection != "":
-            try:
-                features_pro = features.load_features(saved_projection)
-            except:
-                pass
+            features.save_features(features_pro, saved_projection)
 
-        # if not features are read from disk, compute features
-        if features_pro is None:
-            # generate projection features or body id connectivity features
-            roiquery = f"MATCH (m :Meta) WHERE m.dataset=\"{dataset}\" RETURN m.superLevelRois AS rois"                    
-            roires = npclient.fetch_custom(roiquery)                                                                       
-            superrois = set(roires["rois"].iloc[0])
-
-            features_pro = features.extract_projection_features(neuronlist, dataset, npclient, roilist=list(superrois), leftright=True)
-
-            if saved_projection != "":
-                features.save_features(features_pro, saved_projection)
-
-        # create (aggressive?) clusters
-        hcluster = cluster.hierarchical_cluster(features_pro)
-        cluster2neuron, neuron2cluster = hcluster.get_partitions(len(neuronlist)//est_neuron_per_cluster)
-        print("Computed projection clusters")
+    # create (aggressive?) clusters
+    hcluster = cluster.hierarchical_cluster(features_pro)
+    cluster2neuron, neuron2cluster = hcluster.get_partitions(len(neuronlist)//est_neuron_per_cluster)
+    print("Computed projection clusters")
 
     features_type = None
     lastdist = 9999999999
 
     # get and save all ccnnectivity features
-    replay_data = features.compute_connection_similarity_features(neuronlist, dataset, npclient, sort_types=(not collapse_types), dump_replay=True)
+    replay_data = None
+    if postprocess_conn is not None:
+        replay_data = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, postprocess=postprocess_conn, dump_replay=True)
+    else:
+        replay_data = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, dump_replay=True)
 
     # compute type features based on predicted clusters
+    num_iterations = 0
     while True:
-        # TODO: potentially set the cluster name to be a representative element
-        # from the cluster
+        num_iterations += 1
         customtypes = {}
         if neuron2cluster is not None:
             customtypes =  dict(zip(neuron2cluster["bodyid"], neuron2cluster["type"]))
@@ -78,9 +84,13 @@ def iterative_features(neuronlist, dataset, npclient, est_neuron_per_cluster, pr
         replay_data_mod = (p1,p2,p3,p4,old_body2type)
 
         # compute type features based on predicted clusters
-        features_type = features.compute_connection_similarity_features(neuronlist, dataset, npclient, customtypes=customtypes,  sort_types=(not collapse_types), replay_data=replay_data_mod)
-        # iteratively refine
-        if not iterative:
+        if postprocess_conn is not None:
+            features_type = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, postprocess=postprocess_conn, customtypes=customtypes, replay_data=replay_data_mod)
+        else:
+            features_type = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, customtypes=customtypes, replay_data=replay_data_mod)
+
+        # iteratively refine to specified limit or when no improvement found
+        if num_iterations == iterations:
             break
 
         hcluster = cluster.hierarchical_cluster(features_type)
