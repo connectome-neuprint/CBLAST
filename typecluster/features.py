@@ -135,7 +135,7 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
     return postprocess(features_in, features_out)
 
 
-def extract_projection_features(neuronlist, dataset, npclient,
+def extract_projection_features(npclient, dataset, neuronlist,  
         postprocess=sigmoid_process(70, 230, 0.5, 0.5), sym_excl = ["(L)", "(R)"], roilist=None ):
     """Extract features from a list of neurons.
 
@@ -381,7 +381,7 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
         dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
         use_saved_types(boolean): use types stored in neuprint already to guide clustering
-        customtypes (dict): mapping of body ids to a cluster id (over-rules pre-exising types)
+        customtypes (dict or df): mapping of body ids to a cluster id (over-rules pre-exising types)
         postprocess (func): set with *_process function (each function allows users to set input and output to 0)
         (other paramters)
         sort_types (boolean): True to sort, False to collapse
@@ -408,7 +408,10 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
   
     features_in = None
     features_out = None
-    
+   
+    if customtypes is not None and type(customtypes) == pd.DataFrame:
+        customtypes =  dict(zip(customtypes["bodyid"], customtypes["type"]))
+
     if replay_data is not None:
         features_in, features_out, commonin, commonout, body2type = replay_data 
     else:
