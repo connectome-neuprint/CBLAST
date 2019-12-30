@@ -53,7 +53,7 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
     PRE_IMPORTANCECUTOFF = 0
     POST_IMPORTANCECUTOFF = 0
 
-    overlapquery=f"WITH {neuronlist} AS TARGETS MATCH (n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS\
+    overlapquery=f"WITH {neuronlist} AS TARGETS MATCH (n :Neuron) WHERE n.bodyId in TARGETS\
         RETURN n.bodyId AS bodyId, n.roiInfo AS roiInfo"
 
     # relevant rois
@@ -63,8 +63,8 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
     # roi query if needed
     superrois = None
     if roilist is None:
-        roiquery = f"MATCH (m :Meta) WHERE m.dataset=\"{dataset}\" RETURN m.superLevelRois AS rois"
-        roires = npclient.fetch_custom(roiquery)
+        roiquery = f"MATCH (m :Meta) RETURN m.superLevelRois AS rois"
+        roires = npclient.fetch_custom(roiquery, dataset=dataset)
         superrois = set(roires["rois"].iloc[0])
     else:
         superrois = set(roilist)
@@ -78,7 +78,7 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
             troi = troi.replace(excl, "")
         roi2roi[roi] = troi
 
-    res = npclient.fetch_custom(overlapquery)
+    res = npclient.fetch_custom(overlapquery, dataset=dataset)
 
     bodyinfo_in = {}
     bodyinfo_out = {}
@@ -169,15 +169,11 @@ def extract_projection_features(npclient, dataset, neuronlist,
 
     # query db X neurons at a time (restrict to traced neurons for the targets)
     # make a set for all unique ROI labels
-    outputsquery=f"WITH {{}} AS TARGETS MATCH(x :`{dataset}-ConnectionSet`)-\
-    [:From]->(n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS WITH collect(x) as\
-    csets, n UNWIND csets as cset MATCH (cset)-[:To]->(m :`{dataset}-Neuron`) where\
-    (m.status=~'.*raced' OR m.status=\"Leaves\") RETURN n.bodyId AS body1, cset.roiInfo AS info, m.bodyId AS body2, m.roiInfo AS minfo"
+    outputsquery=f"WITH {{}} AS TARGETS MATCH(n :Neuron)-[x :ConnectsTo]->(m :Neuron) WHERE n.bodyId in TARGETS AND\ 
+    m.status=\"Traced\" AND x.weight >= {IMPORTANCECUTOFF} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.roiInfo AS minfo"
 
-    inputsquery=f"WITH {{}} AS TARGETS MATCH(x :`{dataset}-ConnectionSet`)-\
-    [:To]->(n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS WITH collect(x) as\
-    csets, n UNWIND csets as cset MATCH (cset)-[:From]->(m :`{dataset}-Neuron`) where\
-    (m.status=~'.*raced' OR m.status=\"Leaves\") RETURN n.bodyId AS body1, cset.roiInfo AS info, m.bodyId AS body2, m.roiInfo AS minfo"
+    inputsquery=f"WITH {{}} AS TARGETS MATCH(n :Neuron)<-[x :ConnectsTo]-(m :Neuron) WHERE n.bodyId in TARGETS AND\ 
+    m.status=\"Traced\" AND x.weight >= {IMPORTANCECUTOFF} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.roiInfo AS minfo"
 
     # relevant rois
     inrois = set()
@@ -188,9 +184,10 @@ def extract_projection_features(npclient, dataset, neuronlist,
     # roi query if needed
     superrois = None
     if roilist is None:
-        roiquery = f"MATCH (m :Meta) WHERE m.dataset=\"{dataset}\" RETURN m.superLevelRois AS rois"
-        roires = npclient.fetch_custom(roiquery)
+        roiquery = f"MATCH (m :Meta) RETURN m.superLevelRois AS rois"
+        roires = npclient.fetch_custom(roiquery, dataset=dataset)
         superrois = set(roires["rois"].iloc[0])
+        superrois.add("None")
     else:
         superrois = set(roilist)
 
@@ -217,8 +214,8 @@ def extract_projection_features(npclient, dataset, neuronlist,
         queryout = outputsquery.format(currblist)
 
         print(f"fetch batch {iter1}")
-        resin = npclient.fetch_custom(queryin)
-        resout = npclient.fetch_custom(queryout)
+        resin = npclient.fetch_custom(queryin, dataset=dataset)
+        resout = npclient.fetch_custom(queryout, dataset=dataset)
 
         for index, row in resin.iterrows():
             b1 = row["body1"]
@@ -417,21 +414,15 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
     else:
         for iter1 in range(0, len(neuronlist), 100):
             currlist = neuronlist[iter1:iter1+100]
-            outputsquery=f"WITH {currlist} AS TARGETS MATCH(x :`{dataset}-ConnectionSet`)-\
-            [:From]->(n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS WITH collect(x) as\
-            csets, n UNWIND csets as cset MATCH (cset)-[:To]->(m :`{dataset}-Neuron`) where\
-            (m.status=~'.*raced' OR m.status=\"Leaves\") RETURN n.bodyId AS body1, cset.roiInfo AS info, m.bodyId AS body2, m.type AS type"
+            
+            outputsquery=f"WITH {currlist} AS TARGETS MATCH(n :Neuron)-[x :ConnectsTo]->(m :Neuron) WHERE n.bodyId in TARGETS AND m.status=\"Traced\" AND x.weight >= {minconn} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight"
 
-            inputsquery=f"WITH {currlist} AS TARGETS MATCH(x :`{dataset}-ConnectionSet`)-\
-            [:To]->(n :`{dataset}-Neuron`) WHERE n.bodyId in TARGETS WITH collect(x) as\
-            csets, n UNWIND csets as cset MATCH (cset)-[:From]->(m :`{dataset}-Neuron`) where\
-            (m.status=~'.*raced' OR m.status=\"Leaves\") RETURN n.bodyId AS body1, cset.roiInfo AS info, m.bodyId AS body2, m.type AS type"
+            inputsquery=f"WITH {currlist} AS TARGETS MATCH(n :Neuron)<-[x :ConnectsTo]-(m :Neuron) WHERE n.bodyId in TARGETS AND m.status=\"Traced\" AND x.weight >= {minconn} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight"
          
-
             print(f"fetch batch {iter1}")
 
             def collect_features(query, io_list, common_io):
-                res = npclient.fetch_custom(query)
+                res = npclient.fetch_custom(query, dataset=dataset)
                 for idx, row in res.iterrows():
                     if row["body1"] == row["body2"]:
                         continue
@@ -454,11 +445,14 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                     roiinfo = json.loads(row["info"])
 
                     totconn = 0
-                    for roi, val in roiinfo.items():
-                        if roi_restriction is not None:
+                    # restrict connections to provided ROIs
+                    if roi_restriction is not None:
+                        for roi, val in roiinfo.items():
                             if roi not in roi_restriction:
                                 continue
-                        totconn += val["post"]
+                            totconn += val["post"]
+                    else:
+                        totconn = row["weight"]
 
                     if totconn >= minconn:
                         if row["body1"] not in io_list:
