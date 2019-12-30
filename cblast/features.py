@@ -169,10 +169,10 @@ def extract_projection_features(npclient, dataset, neuronlist,
 
     # query db X neurons at a time (restrict to traced neurons for the targets)
     # make a set for all unique ROI labels
-    outputsquery=f"WITH {{}} AS TARGETS MATCH(n :Neuron)-[x :ConnectsTo]->(m :Neuron) WHERE n.bodyId in TARGETS AND\ 
+    outputsquery=f"WITH {{}} AS TARGETS MATCH(n :Neuron)-[x :ConnectsTo]->(m :Neuron) WHERE n.bodyId in TARGETS AND\
     m.status=\"Traced\" AND x.weight >= {IMPORTANCECUTOFF} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.roiInfo AS minfo"
 
-    inputsquery=f"WITH {{}} AS TARGETS MATCH(n :Neuron)<-[x :ConnectsTo]-(m :Neuron) WHERE n.bodyId in TARGETS AND\ 
+    inputsquery=f"WITH {{}} AS TARGETS MATCH(n :Neuron)<-[x :ConnectsTo]-(m :Neuron) WHERE n.bodyId in TARGETS AND\
     m.status=\"Traced\" AND x.weight >= {IMPORTANCECUTOFF} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.roiInfo AS minfo"
 
     # relevant rois
@@ -487,7 +487,7 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
         if dump_replay:
             return (features_in, features_out, commonin, commonout, body2type)
 
-    def set_features(features_arr, common_io, dilin)
+    def set_features(features_arr, common_io, dilin):
         featurenames = []
         equivclasses = {}
 
