@@ -1,32 +1,25 @@
-# typecluster
-**status: experimental**
-Cluster neurons based on synapse connections.
+# CBLAST
+Cluster neurons based on synaptic connectivity to derive cell types.
 
 This application has numerous strategies for extracting features for different
-neurons that can be used for automatic clustering.  These tools, for now, are intended
-to run within a Jupyter notebook and to enable users to find new neuron clusters or
-to evaluate previously create ones.  It is also hoped that interactive exploration
-will aid the in creation of even better features.
+neurons that can be used for automatic clustering.  Thees tools can be run offline
+or within Jupyer notebooks to faciliate interactive exploration.
 
 # installation and running
 
 Install [conda](https://docs.conda.io/en/latest/miniconda.html).
 
-    % conda create -n typecluster
+    % conda create -n cblast
     % conda install scipy scikit-learn umap-learn jupyter hvplot bokeh plotly neuprint-python pyarrow -n typecluster -c conda-forge -c flyem-forge
-    % source activate typecluster
-    % git clone https://github.com/connectome-neuprint/typecluster.git
-    % cd typecluster; python setup.py install
+    % source activate cblast 
+    % git clone https://github.com/connectome-neuprint/cblast.git
+    % cd cblast; python setup.py install
     % export NEUPRINT_APPLICATION_CREDENTIALS=YOURTOKEN
     % jupyter notebook 
 
-To use the library, import typecluster.
+To use the library, import cblast.
 
 # todo
 
-* add more visualization widgets (especially to debug cluster features and to evalaute ground truth)
-* create recipes for example workflows
 * add example notebooks
-* add functions for outlier analysis
-* improve featues creation algorithms (e.g., iterative feature generation)
-* create batch-based workflow to run with minimal supervision
+* metrics for outlier analysis

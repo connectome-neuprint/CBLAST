@@ -88,8 +88,8 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
     # load cluster types
     if clusters is not None:
         clusters = clusters[["bodyid", "type"]].copy()
-        clusters.rename(columns={"type": "typecluster"}, inplace=True)
-        ctypes = clusters["typecluster"].unique()
+        clusters.rename(columns={"type": "cblast"}, inplace=True)
+        ctypes = clusters["cblast"].unique()
         coordtable = coordtable.merge(clusters, on="bodyid", how="left")
         coordtable2 = coordtable2.merge(clusters, on="bodyid", how="left")
 
@@ -101,11 +101,11 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
     for celltype in ctypes:
         cval = next(colors)
         if groundtruth is None:
-            p.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["typecluster"] == celltype]))
-            p2.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typecluster"] == celltype]))
+            p.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["cblast"] == celltype]))
+            p2.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["cblast"] == celltype]))
         else:
-            p3.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["typecluster"] == celltype]))
-            p4.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typecluster"] == celltype]))
+            p3.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["cblast"] == celltype]))
+            p4.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["cblast"] == celltype]))
 
     if groundtruth is None and clusters is None:
         cval = next(colors)
@@ -113,13 +113,13 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
         p2.square("x", "y", size=10, color=cval, alpha=0.8, source=ColumnDataSource(coordtable2))
 
     if groundtruth is not None and clusters is not None:
-        p.add_tools( HoverTool(tooltips= [("body id","@bodyid"), ("type (gt)","@typegt"), ("type (cluster)","@typecluster")]))
+        p.add_tools( HoverTool(tooltips= [("body id","@bodyid"), ("type (gt)","@typegt"), ("type (cluster)","@cblast")]))
         p.legend.click_policy="mute"
-        p2.add_tools( HoverTool(tooltips= [("body id","@bodyid"),("type (gt)","@typegt"), ("type (cluster)","@typecluster")]))
+        p2.add_tools( HoverTool(tooltips= [("body id","@bodyid"),("type (gt)","@typegt"), ("type (cluster)","@cblast")]))
         p2.legend.click_policy="mute"
-        p3.add_tools( HoverTool(tooltips= [("body id","@bodyid"), ("type (gt)","@typegt"), ("type (cluster)","@typecluster")]))
+        p3.add_tools( HoverTool(tooltips= [("body id","@bodyid"), ("type (gt)","@typegt"), ("type (cluster)","@cblast")]))
         p3.legend.click_policy="mute"
-        p4.add_tools( HoverTool(tooltips= [("body id","@bodyid"),("type (gt)","@typegt"), ("type (cluster)","@typecluster")]))
+        p4.add_tools( HoverTool(tooltips= [("body id","@bodyid"),("type (gt)","@typegt"), ("type (cluster)","@cblast")]))
         p4.legend.click_policy="mute"
         #grid = gridplot([[p, p2], [p3, p4]])
         grid = gridplot([[p], [p3]])
@@ -136,9 +136,9 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
             p2.add_tools( HoverTool(tooltips= [("body id","@bodyid"),("type (gt)","@typegt")]))
             p2.legend.click_policy="mute"
         else:
-            p.add_tools( HoverTool(tooltips= [("body id","@bodyid"), ("type (cluster)","@typecluster")]))
+            p.add_tools( HoverTool(tooltips= [("body id","@bodyid"), ("type (cluster)","@cblast")]))
             p.legend.click_policy="mute"
-            p2.add_tools( HoverTool(tooltips= [("body id","@bodyid"), ("type (cluster)","@typecluster")]))
+            p2.add_tools( HoverTool(tooltips= [("body id","@bodyid"), ("type (cluster)","@cblast")]))
             p2.legend.click_policy="mute"
 
         #grid = gridplot([[p, p2]])
