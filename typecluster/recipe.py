@@ -85,17 +85,15 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
         if neuron2cluster is not None:
             customtypes =  dict(zip(neuron2cluster["bodyid"], neuron2cluster["type"]))
 
-        # ?! if I support fanin/fanout for pro features, need to keep those types around
-        # add new cell type groupings
         p1, p2, p3, p4, old_body2type = replay_data
         old_body2type.update(customtypes)
-        replay_data_mod = (p1,p2,p3,p4,old_body2type)
+        replay_data = (p1,p2,p3,p4,old_body2type)
 
         # compute type features based on predicted clusters
         if postprocess_conn is not None:
-            features_type = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, postprocess=postprocess_conn, customtypes=customtypes, replay_data=replay_data_mod)
+            features_type = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, postprocess=postprocess_conn, customtypes=customtypes, replay_data=replay_data)
         else:
-            features_type = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, customtypes=customtypes, replay_data=replay_data_mod)
+            features_type = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, customtypes=customtypes, replay_data=replay_data)
 
         # iteratively refine to specified limit or when no improvement found
         if num_iterations == iterations:
