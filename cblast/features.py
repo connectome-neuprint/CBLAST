@@ -155,9 +155,9 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
     PRE_IMPORTANCECUTOFF = 0
     POST_IMPORTANCECUTOFF = 0
 
-    overlapquery=f"WITH {neuronlist} AS TARGETS MATCH (n :Neuron) WHERE n.bodyId in TARGETS\
+    overlapquery=f"WITH {{}} AS TARGETS MATCH (n :Neuron) WHERE n.bodyId in TARGETS\
         RETURN n.bodyId AS bodyId, n.roiInfo AS roiInfo"
-
+    
     # relevant rois
     inrois = set()
     outrois = set()
@@ -171,7 +171,6 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
     else:
         superrois = set(roilist)
 
-
     # if left/right symmetry map ROIs to common name
     roi2roi = {}
     for roi in superrois:
@@ -179,31 +178,36 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
         for excl in sym_excl: 
             troi = troi.replace(excl, "")
         roi2roi[roi] = troi
-
-    res = npclient.fetch_custom(overlapquery, dataset=dataset)
-
     bodyinfo_in = {}
     bodyinfo_out = {}
-    for idx, row in res.iterrows():
-        roiinfo = json.loads(row["roiInfo"])
-        bodyinfo_in[row["bodyId"]] = {}
-        bodyinfo_out[row["bodyId"]] = {}
 
-        for roi, val in roiinfo.items():
-            if roi in superrois:
-                roi = roi2roi[roi]
-                if val.get("pre", 0) > PRE_IMPORTANCECUTOFF:
-                    inrois.add(roi)
-                    if roi in bodyinfo_in[row["bodyId"]]:
-                        bodyinfo_in[row["bodyId"]][roi] += val.get("pre", 0) 
-                    else:
-                        bodyinfo_in[row["bodyId"]][roi] = val.get("pre", 0) 
-                if val.get("post", 0) > POST_IMPORTANCECUTOFF:
-                    outrois.add(roi)
-                    if roi in bodyinfo_out[row["bodyId"]]:
-                        bodyinfo_out[row["bodyId"]][roi] += (POLYADIC_HACK * val.get("post", 0))
-                    else:
-                        bodyinfo_out[row["bodyId"]][roi] = (POLYADIC_HACK * val.get("post", 0))
+    for iter1 in range(0, len(neuronlist), 500):
+        currblist = neuronlist[iter1:(iter1+500)]
+        print(f"fetch batch {iter1}")
+        
+        query = overlapquery.format(currblist)
+        res = npclient.fetch_custom(query, dataset=dataset)
+
+        for idx, row in res.iterrows():
+            roiinfo = json.loads(row["roiInfo"])
+            bodyinfo_in[row["bodyId"]] = {}
+            bodyinfo_out[row["bodyId"]] = {}
+
+            for roi, val in roiinfo.items():
+                if roi in superrois:
+                    roi = roi2roi[roi]
+                    if val.get("pre", 0) > PRE_IMPORTANCECUTOFF:
+                        inrois.add(roi)
+                        if roi in bodyinfo_in[row["bodyId"]]:
+                            bodyinfo_in[row["bodyId"]][roi] += val.get("pre", 0) 
+                        else:
+                            bodyinfo_in[row["bodyId"]][roi] = val.get("pre", 0) 
+                    if val.get("post", 0) > POST_IMPORTANCECUTOFF:
+                        outrois.add(roi)
+                        if roi in bodyinfo_out[row["bodyId"]]:
+                            bodyinfo_out[row["bodyId"]][roi] += (POLYADIC_HACK * val.get("post", 0))
+                        else:
+                            bodyinfo_out[row["bodyId"]][roi] = (POLYADIC_HACK * val.get("post", 0))
 
       # generate feature vector for the projectome and the pre and post sizes
     features_in = np.zeros((len(neuronlist), len(inrois)))
