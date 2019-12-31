@@ -19,7 +19,7 @@ def extract_neighbors(npclient, dataset, neuronlist, minconn=3):
 
     for iter1 in range(0, len(neuronlist), 100):
         currlist = neuronlist[iter1:(iter1+100)]
-        partnerquery = f"WITH {currlist} AS TARGETS MATCH (n :Neuron)-[x :ConnectsTo]-(m :Neuron) WHERE n.bodyId in TARGETS AND x.weight >= {minconn} AND m.status=\"Traced\" DISTINCT m AS m RETURN collect(m.bodyId) AS bodylist"
+        partnerquery = f"WITH {currlist} AS TARGETS MATCH (n :Neuron)-[x :ConnectsTo]-(m :Neuron) WHERE n.bodyId in TARGETS AND x.weight >= {minconn} AND m.status=\"Traced\" WITH DISTINCT m AS m RETURN collect(m.bodyId) AS bodylist"
 
         res = npclient.fetch_custom(partnerquery, dataset=dataset)
         if len(res) == 1:

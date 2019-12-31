@@ -31,6 +31,110 @@ def load_features(filename):
     features.set_index('index', inplace=True)
     return features
 
+def sigmoid_process(start = 10, stop = 30, wgt_in = 0.5, wgt_out = 0.5):
+    """Applies a sigmoid shifted by the start and stop range value.
+
+    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
+    """
+    
+    def postprocess(features_in, features_out):
+        #wgt_in = wgt_in**(1/2)
+        #wgt_out = wgt_out**(1/2)
+   
+        # create sigmoid function
+        shift = (stop-start)/2+start
+        scale = (stop-start)/4
+        func = np.vectorize(lambda x: 1 / (1 + np.exp(-((x-shift)/scale))))
+
+        features_in = features_in.apply(func)
+        features_out = features_out.apply(func)
+        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
+
+    return postprocess
+
+def clipped_process(start = 3, stop = 50, wgt_in = 0.5, wgt_out = 0.5):
+    """Clips values at the top and bottom of the range to 0 and the stop value respectively.
+
+    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
+    """
+    def postprocess(features_in, features_out):
+        #wgt_in = wgt_in**(1/2)
+        #wgt_out = wgt_out**(1/2)
+   
+        # create clip function
+        func = np.vectorize(lambda x: 0 if x < start else (stop if x > stop else x))
+
+        features_in = features_in.apply(func)
+        features_out = features_out.apply(func)
+        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
+
+    return postprocess
+
+def noop_process(wgt_in, wgt_out):
+    """Simply uses input and output weights as is with no post-processing
+    except for wgt_in and wgt_out.
+    
+    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
+    """
+
+    def postprocess(features_in, features_out):
+        #wgt_in = wgt_in**(1/2)
+        #wgt_out = wgt_out**(1/2)
+        
+        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
+
+    return postprocess
+
+def scaled_process_old(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
+    """Disable input or output by setting the weight to 0.
+
+    Note: weights are simple scaling of features
+
+    default wgts for roioverlap_features and projection features is [0.25,0.6,0.15]
+    """
+
+    def postprocess(features_in, features_out):
+        # re-create size array, norm everything
+        sz_in = pd.DataFrame(features_in.sum(axis=1), columns=["post"])
+        sz_out = pd.DataFrame(features_out.sum(axis=1), columns=["pre"])
+        features_in = features_in.div(features_in.sum(axis=1), axis=0)
+        features_out = features_out.div(features_in.sum(axis=1), axis=0)
+
+        features = _combine_features([features_in, features_out], [wgt_in, wgt_out])
+        features_sz = _combine_features([sz_in, sz_out], [wgt_in, wgt_out])
+
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.preprocessing import normalize
+  
+        features_arr = features.values
+
+        scaledfeatures = StandardScaler().fit_transform(features_arr)
+        aux_features_arr = features_sz.values
+        aux_scaledfeatures = StandardScaler().fit_transform(aux_features_arr)
+    
+        # ensure rows have the same magnitude -- this hopefully does not
+        # impact the original vectors too much since each row should probably
+        # be normalized in some way.
+        features_norm = normalize(features_arr, axis=1, norm='l2')
+        scaledfeatures_norm = normalize(scaledfeatures, axis=1, norm='l2')
+
+        scaled_featnames=[]
+        for name in features.columns.to_list():
+            scaled_featnames.append(str(name)+"-s")
+
+        features_normdf = pd.DataFrame(features_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
+        scaledfeatures_normdf = pd.DataFrame(scaledfeatures_norm, index=features.index.values.tolist(), columns=scaled_featnames)
+        aux_scaledfeaturesdf = pd.DataFrame(aux_scaledfeatures, index=features.index.values.tolist(), columns=features_sz.columns.values.tolist())
+
+        return _combine_features([features_normdf, scaledfeatures_normdf, aux_scaledfeaturesdf], wgts)
+
+    return postprocess 
+
+
+
+
+
+
 def extract_roioverlap_features(npclient, dataset, neuronlist,
         postprocess=sigmoid_process(70, 230, 1.0, 5.0), sym_excl = ["(L)", "(R)"], roilist=None):
     """Extract simple ROI overlap features. 
@@ -89,19 +193,19 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
 
         for roi, val in roiinfo.items():
             if roi in superrois:
-                roi = roi2roi
-                if val["pre"] > PRE_IMPORTANCECUTOFF:
+                roi = roi2roi[roi]
+                if val.get("pre", 0) > PRE_IMPORTANCECUTOFF:
                     inrois.add(roi)
                     if roi in bodyinfo_in[row["bodyId"]]:
-                        bodyinfo_in[row["bodyId"]][roi] += val["pre"] 
+                        bodyinfo_in[row["bodyId"]][roi] += val.get("pre", 0) 
                     else:
-                        bodyinfo_in[row["bodyId"]][roi] = val["pre"] 
-                if val["post"] > POST_IMPORTANCECUTOFF:
+                        bodyinfo_in[row["bodyId"]][roi] = val.get("pre", 0) 
+                if val.get("post", 0) > POST_IMPORTANCECUTOFF:
                     outrois.add(roi)
                     if roi in bodyinfo_out[row["bodyId"]]:
-                        bodyinfo_out[row["bodyId"]][roi] += val["post"] 
+                        bodyinfo_out[row["bodyId"]][roi] += val.get("post", 0)
                     else:
-                        bodyinfo_out[row["bodyId"]][roi] = val["post"] 
+                        bodyinfo_out[row["bodyId"]][roi] = val.get("post", 0) 
 
       # generate feature vector for the projectome and the pre and post sizes
     features_in = np.zeros((len(neuronlist), len(inrois)))
@@ -237,9 +341,9 @@ def extract_projection_features(npclient, dataset, neuronlist,
                         body2incount[b1] = 0
                     if key not in body2inputs[b1]:
                         body2inputs[b1][key] = []
-                    if val["post"] >= IMPORTANCECUTOFF:
-                        body2inputs[b1][key].append((val["post"], minfo))
-                    body2incount[b1] += val["post"]
+                    if val.get("post", 0) >= IMPORTANCECUTOFF:
+                        body2inputs[b1][key].append((val.get("post", 0), minfo))
+                    body2incount[b1] += val.get("post", 0)
 
         for index, row in resout.iterrows():
             b1 = row["body1"]
@@ -258,9 +362,9 @@ def extract_projection_features(npclient, dataset, neuronlist,
                         body2outcount[b1] = 0
                     if key not in body2outputs[b1]:
                         body2outputs[b1][key] = []
-                    if val["post"] >= IMPORTANCECUTOFF:
-                        body2outputs[b1][key].append((val["post"], json.loads(row["minfo"])))
-                    body2outcount[b1] += val["post"]
+                    if val.get("post", 0) >= IMPORTANCECUTOFF:
+                        body2outputs[b1][key].append((val.get("post", 0), json.loads(row["minfo"])))
+                    body2outcount[b1] += val.get("post", 0)
 
 
     # generate feature vector for the projectome (separatee upstream and downstream)
@@ -288,19 +392,19 @@ def extract_projection_features(npclient, dataset, neuronlist,
                             posttot = 0
                             for secroi in secrois:
                                 if secroi in roiinfo:
-                                    pretot += roiinfo[secroi]["pre"]
-                                    posttot += roiinfo[secroi]["post"]
+                                    pretot += roiinfo[secroi].get("pre", 0)
+                                    posttot += roiinfo[secroi].get("post", 0)
                             for secroi in secrois:
                                 if secroi in roiinfo:
                                     if secroi not in roi2normincount:
                                         roi2normincount[secroi] = 0
-                                    if roiinfo[secroi]["pre"] > 0:
-                                        roi2normincount[secroi] += ((roiinfo[secroi]["pre"]/pretot)*(count/roitot))*(roitot)
+                                    if roiinfo[secroi].get("pre", 0) > 0:
+                                        roi2normincount[secroi] += ((roiinfo[secroi].get("pre", 0)/pretot)*(count/roitot))*(roitot)
 
                                     if secroi not in roi2normoutcount:
                                         roi2normoutcount[secroi] = 0
-                                    if roiinfo[secroi]["post"] > 0:
-                                        roi2normoutcount[secroi] += ((roiinfo[secroi]["post"]/posttot)*(count/roitot))*(roitot)
+                                    if roiinfo[secroi].get("post", 0) > 0:
+                                        roi2normoutcount[secroi] += ((roiinfo[secroi].get("post", 0)/posttot)*(count/roitot))*(roitot)
 
                         # load input features
                         secroifeat = []
@@ -349,7 +453,7 @@ def extract_projection_features(npclient, dataset, neuronlist,
                 else:
                     equivclasses[key] = [key]
                 featurenames.append(key)
-        features = pd.DataFrame(featurearray, index=neuronlist, columns=featurenames) 
+        features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames) 
         
         if len(equivclasses):
             equivlists = []
@@ -358,8 +462,8 @@ def extract_projection_features(npclient, dataset, neuronlist,
             
             features = _sort_equiv_features(features, equivlists)
         return features
-    set_features(features_in, inrois, "<=")
-    set_features(features_in, outrois, "=>")
+    features_in = set_features(features_in, inrois, "<=")
+    features_out = set_features(features_out, outrois, "=>")
 
     return postprocess(features_in, features_out)
 
@@ -450,7 +554,7 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                         for roi, val in roiinfo.items():
                             if roi not in roi_restriction:
                                 continue
-                            totconn += val["post"]
+                            totconn += val.get("post", 0)
                     else:
                         totconn = row["weight"]
 
@@ -516,107 +620,6 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
     features_out = set_features(features_out, commonout, "<=")
 
     return postprocess(features_in, features_out)
-
-
-def signmoid_process(start = 10, stop = 30, wgt_in = 0.5, wgt_out = 0.5):
-    """Applies a sigmoid shifted by the start and stop range value.
-
-    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
-    """
-    
-    def postprocess(features_in, features_out):
-        #wgt_in = wgt_in**(1/2)
-        #wgt_out = wgt_out**(1/2)
-   
-        # create sigmoid function
-        shift = (stop-start)/2+start
-        scale = (stop-start)/4
-        func = np.vectorize(lambda x: 1 / (1 + np.exp(-((x-shift)/scale))))
-
-        features_in = features_in.apply(func)
-        features_out = features_out.apply(func)
-        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
-
-    return postprocess
-
-def clipped_process(start = 3, stop = 50, wgt_in = 0.5, wgt_out = 0.5):
-    """Clips values at the top and bottom of the range to 0 and the stop value respectively.
-
-    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
-    """
-    def postprocess(features_in, features_out):
-        #wgt_in = wgt_in**(1/2)
-        #wgt_out = wgt_out**(1/2)
-   
-        # create clip function
-        func = np.vectorize(lambda x: 0 if x < start else (stop if x > stop else x))
-
-        features_in = features_in.apply(func)
-        features_out = features_out.apply(func)
-        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
-
-    return postprocess
-
-def noop_process(wgt_in, wgt_out):
-    """Simply uses input and output weights as is with no post-processing
-    except for wgt_in and wgt_out.
-    
-    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
-    """
-
-    def postprocess(features_in, features_out):
-        #wgt_in = wgt_in**(1/2)
-        #wgt_out = wgt_out**(1/2)
-        
-        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
-
-    return postprocess
-
-def scaled_process_old(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
-    """Disable input or output by setting the weight to 0.
-
-    Note: weights are simple scaling of features
-
-    default wgts for roioverlap_features and projection features is [0.25,0.6,0.15]
-    """
-
-    def postprocess(features_in, features_out):
-        # re-create size array, norm everything
-        sz_in = pd.DataFrame(features_in.sum(axis=1), columns=["post"])
-        sz_out = pd.DataFrame(features_out.sum(axis=1), columns=["pre"])
-        features_in = features_in.div(features_in.sum(axis=1), axis=0)
-        features_out = features_out.div(features_in.sum(axis=1), axis=0)
-
-        features = _combine_features([features_in, features_out], [wgt_in, wgt_out])
-        features_sz = _combine_features([sz_in, sz_out], [wgt_in, wgt_out])
-
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.preprocessing import normalize
-  
-        features_arr = features.values
-
-        scaledfeatures = StandardScaler().fit_transform(features_arr)
-        aux_features_arr = features_sz.values
-        aux_scaledfeatures = StandardScaler().fit_transform(aux_features_arr)
-    
-        # ensure rows have the same magnitude -- this hopefully does not
-        # impact the original vectors too much since each row should probably
-        # be normalized in some way.
-        features_norm = normalize(features_arr, axis=1, norm='l2')
-        scaledfeatures_norm = normalize(scaledfeatures, axis=1, norm='l2')
-
-        scaled_featnames=[]
-        for name in features.columns.to_list():
-            scaled_featnames.append(str(name)+"-s")
-
-        features_normdf = pd.DataFrame(features_norm, index=features.index.values.tolist(), columns=features.columns.values.tolist())
-        scaledfeatures_normdf = pd.DataFrame(scaledfeatures_norm, index=features.index.values.tolist(), columns=scaled_featnames)
-        aux_scaledfeaturesdf = pd.DataFrame(aux_scaledfeatures, index=features.index.values.tolist(), columns=features_sz.columns.values.tolist())
-
-        return _combine_features([features_normdf, scaledfeatures_normdf, aux_scaledfeaturesdf], wgts)
-
-    return postprocess 
-
 
 def find_max_differences(features, body1, body2, numfeatures = 10):
     """Find features that are most different for body1 and body2.
@@ -738,6 +741,23 @@ def _combine_features(feature_list, wgt_list):
     return pd.DataFrame(combofeatures, index=feature_list[0].index.values.tolist(), columns=featurenames) 
 
 
+def _process_chunk(df_chunk_pair):
+    df_chunk, equivlists = df_chunk_pair
+    for idx, row in df_chunk.iterrows():
+        rowdict = row.to_dict()
+        for group in equivlists:
+            vals = []
+            labels = []
+            for item in group:
+                vals.append(rowdict[item])
+                labels.append(item)
+            vals.sort(reverse=True)
+            for idx2, label in enumerate(labels):
+                rowdict[label] = vals[idx2]
+
+        for idx2, cname in enumerate(row.index.tolist()):
+            row[idx2] = rowdict[cname] 
+    return df_chunk
 
 def _sort_equiv_features(features, equivlists):
     """Sort related features from big to small.
@@ -749,29 +769,12 @@ def _sort_equiv_features(features, equivlists):
     CHUNK_SIZE = 100
     df_chunks = []
     for chunk_start in range(0, len(features), CHUNK_SIZE):
-        df_chunks.append( features.iloc[chunk_start:(chunk_start+CHUNK_SIZE)] )
-
-    def process_chunk(df_chunk):
-        for idx, row in df_chunk.iterrows():
-            rowdict = row.to_dict()
-            for group in equivlists:
-                vals = []
-                labels = []
-                for item in group:
-                    vals.append(rowdict[item])
-                    labels.append(item)
-                vals.sort(reverse=True)
-                for idx2, label in enumerate(labels):
-                    rowdict[label] = vals[idx2]
-
-            for idx2, cname in enumerate(row.index.tolist()):
-                row[idx2] = rowdict[cname] 
-        return df_chunk
+        df_chunks.append( (features.iloc[chunk_start:(chunk_start+CHUNK_SIZE)], equivlists) )
 
 
     # process chunks in parallel
     from multiprocessing import Pool
     with Pool(processes=None) as pool:
-        sorted_chunks = pool.map(process_chunk, df_chunks)
+        sorted_chunks = pool.map(_process_chunk, df_chunks)
     
     return pd.concat(sorted_chunks)

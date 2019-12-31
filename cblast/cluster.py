@@ -6,6 +6,7 @@ Contains a set of functions for clustering neurons and visualing results.
 import json
 import numpy as np
 import pandas as pd
+from scipy.cluster.hierarchy import linkage
 
 def hierarchical_cluster(features):
     """Compute a hierarchical clustering for a given set of features.
@@ -15,9 +16,8 @@ def hierarchical_cluster(features):
     Returns:
         (HClusterobject): wraps cluster resultss
     """
-    distArray = compute_distance_matrix(features)
-    from scipy.cluster.hierarchy import linkage
-    clustering = linkage(distArray.values, 'ward')
+    distArray = compute_distance_matrix(features, condense=True)
+    clustering = linkage(distArray, 'ward')
     return HCluster(clustering, features.index.values.tolist(), features)
 
 def kmeans_cluster(features, num_clusters):
@@ -32,7 +32,7 @@ def kmeans_cluster(features, num_clusters):
 
     return KCluster(KMeans(n_clusters=num_clusters, random_state=0).fit(features), features.index.values.tolist(), features)
 
-def compute_distance_matrix(features):
+def compute_distance_matrix(features, condense=False):
     """Compute a distance matrix between the neurons.
 
     Args:
@@ -46,9 +46,12 @@ def compute_distance_matrix(features):
     from scipy.spatial.distance import squareform
     
     D = pairwise_distances(X = features.values, metric = 'euclidean', n_jobs = -1)
-    dist_matrix = squareform(D)
+    D = np.round(D, 5)
 
-    return pd.DataFrame(dist_matrix, index=features.index.values.tolist(), columns=features.index.values.tolist())
+    if condense:
+        return squareform(D)
+
+    return pd.DataFrame(D, index=features.index.values.tolist(), columns=features.index.values.tolist())
 
 def sort_distance_matrix(distance):
     """Sort the distance matrix based on hierarchical clustering.
