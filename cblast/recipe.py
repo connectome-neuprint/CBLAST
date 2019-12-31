@@ -213,5 +213,23 @@ def cblast_workflow(npclient, dataset, neuronlist, est_neuron_per_cluster,
 
     return features_type
 
+def non_iterative_features(npclient, dataset, neuronlist, wgts=[0.4,0.4,0.2]):
+    """Computes features based on connection distribution, roi projections, and roi overlap.
 
+    Args:
+        npclient (object): neuprint client object
+        dataset (str): name of neuprint dataset
+        neuronlist (list): list of body ids
+        wgts (list): relative weight for connection distribution, projection, and roi overlap features respectively.
+    
+    Returns:
+        dataframe: index: body ids; columns: different features 
+
+    """
+
+    dist_features = features.compute_connection_similarity_features(npclient, dataset, neuronlist, pattern_only=True)
+    pro_features = features.extract_projection_features(npclient, dataset, neuronlist)
+    overlap_features = features.extract_roioverlap_features(npclient, dataset, neuronlist)
+
+    return features._combine_features([dist_features, pro_features, overlap_features], wgts)
 
