@@ -130,13 +130,8 @@ def scaled_process_old(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
 
     return postprocess 
 
-
-
-
-
-
 def extract_roioverlap_features(npclient, dataset, neuronlist,
-        postprocess=sigmoid_process(70, 230, 1.0, 5.0), sym_excl = ["(L)", "(R)"], roilist=None):
+        postprocess=sigmoid_process(70, 230, 0.5, 0.5), sym_excl = ["(L)", "(R)"], roilist=None, POLYADIC_HACK=5):
     """Extract simple ROI overlap features. 
 
     Args:
@@ -147,6 +142,9 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
         (default sets outputs to have 5x weight of inputs as a hack for Dropholia polyadic connections)
         sym_excl (list(str)): a list of substrings to exclude from the ROI list (specific to hemibrain for now)
         roilist (list): custom list of ROIs to use
+        POLYADIC_HACK (int): temporary hack to account for outputs typically driving multiple inputs, set this
+        to one if synapses are 1:1 (TODO: either base on the number of connections or reweight output and input
+        to have roughly the same magnitude)
     Returns:
         dataframe: index: body ids; columns: different features 
     """
@@ -203,9 +201,9 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
                 if val.get("post", 0) > POST_IMPORTANCECUTOFF:
                     outrois.add(roi)
                     if roi in bodyinfo_out[row["bodyId"]]:
-                        bodyinfo_out[row["bodyId"]][roi] += val.get("post", 0)
+                        bodyinfo_out[row["bodyId"]][roi] += (POLYADIC_HACK * val.get("post", 0))
                     else:
-                        bodyinfo_out[row["bodyId"]][roi] = val.get("post", 0) 
+                        bodyinfo_out[row["bodyId"]][roi] = (POLYADIC_HACK * val.get("post", 0))
 
       # generate feature vector for the projectome and the pre and post sizes
     features_in = np.zeros((len(neuronlist), len(inrois)))
