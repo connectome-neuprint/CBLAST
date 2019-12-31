@@ -471,7 +471,8 @@ def extract_projection_features(npclient, dataset, neuronlist,
 
 def compute_connection_similarity_features(npclient, dataset, neuronlist,
         use_saved_types=True, customtypes={}, postprocess=sigmoid_process(),
-        sort_types=True, minconn=3, roi_restriction=None, dump_replay=False, replay_data = None):
+        sort_types=True, pattern_only=False, minconn=3, roi_restriction=None,
+        dump_replay=False, replay_data = None):
     """Computes an pairwise adjacency matrix for the given set of neurons.
 
     This function looks at inputs and outputs for the set of neurons.  The connections
@@ -488,6 +489,8 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
         postprocess (func): set with *_process function (each function allows users to set input and output to 0)
         (other paramters)
         sort_types (boolean): True to sort, False to collapse
+        pattern_only (boolean): If true, do not consider the specific id of the neuron or type, only the
+        distribution of connection weights
         minconn (int): Only consider connections >= minconn
         roi_restriction (list): ROIs to restrict feature extraction (default: no restriction)
         dump_replay (boolean): dumps features after parsing neuprint
@@ -498,6 +501,12 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
     Note: only connection to traced neurons are considered.
 
     """
+
+    if pattern_only:
+        sort_types = True
+        use_saved_types = False
+        customtypes = {}
+
     # set of all common input and outputs
     commonin = set()
     commonout = set()
@@ -545,6 +554,8 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                             common_type = customtypes[feat_type]
                         elif use_saved_types and row["type"] is not None and row["type"] != "":
                             common_type = row["type"]
+                        elif pattern_only:
+                            common_type = "ph"
                         if common_type != "":
                             body2type[feat_type] = common_type
 
