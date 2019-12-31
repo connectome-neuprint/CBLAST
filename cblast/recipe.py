@@ -81,6 +81,7 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
 
     features_type = None
     lastdist = 9999999999
+    last_features_type = None
 
     # get and save all ccnnectivity features
     replay_data = None
@@ -115,11 +116,17 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
         cluster2neuron, neuron2cluster, dist, bpair  = hcluster.get_partitions(len(neuronlist)//est_neuron_per_cluster, return_max=True)
         print(f"Computed type clusters: {dist}")
 
-        # keep iterating until distance gets larger or doesn't change much
-        diff = abs(dist - lastdist)
-        if dist >= lastdist or diff < 0.0001:
-            break
-        lastdist = dist
+        # keep iterating until distance gets larger or doesn't change much if no iteration is specified
+        if iterations < 1:
+            diff = abs(dist - lastdist)
+            # ignore when change is less than 1% and choose features closer to start
+            if diff < (dist*0.01):
+                if last_features_type is None:
+                    raise RuntimeError("only ran one iteration") 
+                features_type = last_features_type
+                break
+            lastdist = dist
+            last_features_type = features_type
 
     return features_type
 
