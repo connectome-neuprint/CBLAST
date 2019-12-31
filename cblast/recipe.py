@@ -5,7 +5,7 @@ from . import features
 from . import cluster
 from . import utils
 
-def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster, useProj=True,
+def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster, premode="pro",
         cluster_neighbors=False, iterations=0, postprocess_pro=None, postprocess_conn=None,
         saved_projection=""):
     """Generate features through speculative iteration.
@@ -18,7 +18,8 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
         npclient (object): neuprint client object
         dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
-        useProj (boolean): use projection features rather than connectivity without types for seeding
+        premode (str): feature initialization mode ("pro", "conn", or "nonit" for projectome, connectivity,
+        or non iterative features")
         est_neuron_per_cluster (int): estimated number of neurons per cluster (set high?)
         cluster_neighbors (boolean): use the upstream/downstream partners for initial  clustering with projection
         iterations (int): number of iterations to iteratively refine connectivity reesults
@@ -55,29 +56,27 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
             new_neuronlist = utils.extract_neighbors(npclient, dataset, neuronlist) 
         num_neurons = len(new_neuronlist)
 
-
-        if useProj: 
+        if premode == "pro": 
             # generate projection features or body id connectivity features
             if postprocess_pro is not None:
                 features_pro = features.extract_projection_features(npclient, dataset, new_neuronlist, postprocess=postprocess_pro)
             else:
                 features_pro = features.extract_projection_features(npclient, dataset, new_neuronlist)
-
-            if saved_projection != "":
-                features.save_features(features_pro, saved_projection)
-        else:
+        elif premode == "conn":
             if postprocess_pro is not None:
                 features_pro = features.compute_connection_similarity_features(npclient, dataset, new_neuronlist, use_saved_types=False, postprocess=postprocess_pro)
             else:
                 features_pro = features.compute_connection_similarity_features(npclient, dataset, new_neuronlist, use_saved_types=False)
-
-            if saved_projection != "":
-                features.save_features(features_pro, saved_projection)
+        else:
+            features_pro = non_iterative_features(npclient, dataset, new_neuronlist)
+        
+        if saved_projection != "":
+            features.save_features(features_pro, saved_projection)
 
     # create (aggressive?) clusters
     hcluster = cluster.hierarchical_cluster(features_pro)
     cluster2neuron, neuron2cluster = hcluster.get_partitions(num_neurons//est_neuron_per_cluster)
-    print("Computed projection clusters")
+    print("Computed initial clusters")
 
     features_type = None
     lastdist = 9999999999
