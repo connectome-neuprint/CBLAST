@@ -5,8 +5,8 @@ from . import features
 from . import cluster
 from . import utils
 
-def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster, premode="pro",
-        cluster_neighbors=False, iterations=0, postprocess_pro=None, postprocess_conn=None,
+def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
+        cluster_neighbors=False, neighbor_npc=10, iterations=0, postprocess_pro=None, postprocess_conn=None,
         saved_projection=""):
     """Generate features through speculative iteration.
 
@@ -20,8 +20,9 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
         neuronlist (list): list of body ids
         premode (str): feature initialization mode ("pro", "conn", or "nonit" for projectome, connectivity,
         or non iterative features")
-        est_neuron_per_cluster (int): estimated number of neurons per cluster (set high?)
+        npc (int): estimated number of neurons per cluster (set high?) for the list of neurons
         cluster_neighbors (boolean): use the upstream/downstream partners for initial  clustering with projection
+        neighbor_npc (int): npc when considering all neighbors
         iterations (int): number of iterations to iteratively refine connectivity reesults
         (default 0: automatically determine the number of iterations):
         postprocess_pro (func): *_process function option for projection features
@@ -52,7 +53,9 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
     # if not features are read from disk, compute features
     if features_pro is None:
         new_neuronlist = neuronlist
+        npc_round1 = npc
         if cluster_neighbors:
+            npc_round1 = neighbor_npc
             new_neuronlist = utils.extract_neighbors(npclient, dataset, neuronlist) 
         num_neurons = len(new_neuronlist)
 
@@ -75,7 +78,7 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
 
     # create (aggressive?) clusters
     hcluster = cluster.hierarchical_cluster(features_pro)
-    cluster2neuron, neuron2cluster = hcluster.get_partitions(num_neurons//est_neuron_per_cluster)
+    cluster2neuron, neuron2cluster = hcluster.get_partitions(num_neurons//npc_round1)
     print("Computed initial clusters")
 
     features_type = None
@@ -112,7 +115,7 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
             break
 
         hcluster = cluster.hierarchical_cluster(features_type)
-        cluster2neuron, neuron2cluster, dist, bpair  = hcluster.get_partitions(len(neuronlist)//est_neuron_per_cluster, return_max=True)
+        cluster2neuron, neuron2cluster, dist, bpair  = hcluster.get_partitions(len(neuronlist)//npc, return_max=True)
         print(f"Computed type clusters: {dist}")
 
         # keep iterating until distance gets larger or doesn't change much if no iteration is specified
@@ -129,7 +132,7 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
 
     return features_type
 
-def cblast_workflow(npclient, dataset, neuronlist, est_neuron_per_cluster,
+def cblast_workflow(npclient, dataset, neuronlist, npc,
         prev_features=None, iterations=0,
         use_saved_types=True, customtypes={}, postprocess=features.scaled_process(0.5, 0.5, [0.4,0.4,0.2]),
         sort_types=True, minconn=3, roi_restriction=None):
@@ -143,7 +146,7 @@ def cblast_workflow(npclient, dataset, neuronlist, est_neuron_per_cluster,
         npclient (object): neuprint client object
         dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
-        est_neuron_per_cluster (int): estimated number of neurons per cluster (set high?)
+        npc (int): estimated number of neurons per cluster (set high?)
         prev_features (dataframe): features to use for clustering if available
         iterations (int): number of iterations to iteratively refine connectivity reesults
         (default 0: automatically determine the number of iterations):
@@ -164,7 +167,7 @@ def cblast_workflow(npclient, dataset, neuronlist, est_neuron_per_cluster,
     # update custom types with provided features
     if prev_features is not None:
         hcluster = cluster.hierarchical_cluster(features_pro)
-        cluster2neuron, neuron2cluster = hcluster.get_partitions(len(neuronlist)//est_neuron_per_cluster)
+        cluster2neuron, neuron2cluster = hcluster.get_partitions(len(neuronlist)//npc)
         customtypes_new =  dict(zip(neuron2cluster["bodyid"], neuron2cluster["type"]))
         customtypes.update(customtypes_new)
    
@@ -201,7 +204,7 @@ def cblast_workflow(npclient, dataset, neuronlist, est_neuron_per_cluster,
             break
 
         hcluster = cluster.hierarchical_cluster(features_type)
-        cluster2neuron, neuron2cluster, dist, bpair  = hcluster.get_partitions(len(neuronlist)//est_neuron_per_cluster, return_max=True)
+        cluster2neuron, neuron2cluster, dist, bpair  = hcluster.get_partitions(len(neuronlist)//npc, return_max=True)
         print(f"Computed type clusters: {dist}")
 
         # keep iterating until distance gets larger or doesn't change much

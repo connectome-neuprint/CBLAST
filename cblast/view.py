@@ -147,7 +147,8 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
 
 
 def features_compareheatmap(features):
-    """Show heatmap for the provided features.
+    """Show heatmap for the provided features (such as filtered from
+    "features.find_max_differences")
 
     Arg:
         features (dframe): neuron features
