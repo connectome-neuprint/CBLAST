@@ -83,6 +83,70 @@ def find_closest_neurons(neuron, features):
     closest_neurons = dist[neuron]
     return dist[neuron].sort_values(ascending=True)
 
+def get_strongest_matches(features):
+    """Find the best match for each neuron.
+
+    Args:
+        features (dataframe): feature matrix.
+
+    Returns:
+        dataframe: columns = ["bodyid", "match"]
+    """
+
+    if len(features) < 2:
+        raise RuntimeError("must have at least two body ids")
+    dist_matrix = compute_distance_matrix(features)
+    best_matches = []
+    for idx, row in dist_matrix.iterrows():
+        row2 = row.sort_values()
+        # choose a neuron that is not itself
+        if row2.index[0] == idx:
+            best_matches.append([idx, row2.index[1]])
+        else:
+            best_matches.append([idx, row2.index[0]])
+    return pd.DataFrame(best_matches, columns=["bodyid", "match"])
+
+
+def agreement_rate(best_matches, gtmap):
+    """Compares output from "get_strongest_matches" wit
+    ground truth.
+    
+    Args:
+        best_matches (dataframe): mapping from get_strongest_matches
+        gtmap (dataframe): bodyid=>type (columns: ["bodyid", "type"])
+    Returns:
+        (float, list): agreement rate and list of mismatches
+    """
+    gt2type = dict(list(zip(gtmap["bodyid"].to_list(), gtmap["type"].to_list())))
+    match = 0
+    type2count = {}
+    
+    for body, ctype in gt2type.items():
+        if ctype not in type2count:
+            type2count[ctype] = 0
+        type2count[ctype] += 1
+    
+    singletype = set()
+    for ctype, count in type2count.items():
+        if count == 1:
+            singletype.add(ctype)
+        
+        
+    singles = 0
+    mismatches = []
+    for idx, row in best_matches.iterrows():
+        b1 = row[0]
+        b2 = row[1]
+        if gt2type[b1] in singletype:
+            singles+=1
+            continue
+        if gt2type[b1] == gt2type[b2]:
+            match += 1
+        else:
+            mismatches.append((b1, gt2type[b1], b2, gt2type[b2]))
+    return match/(len(best_matches)-singles)*100, mismatches
+
+
 def report_diffs(type2bodies1, type2bodies2, features1 = None, features2 = None):
     """Return the bodies that are in different clusters. Ordered by distance if features provided.
     
