@@ -2,7 +2,7 @@
 Cluster neurons based on synaptic connectivity to derive cell types.
 
 This application has numerous strategies for extracting features for different
-neurons that can be used for automatic clustering.  Thees tools can be run offline
+neurons that can be used for automatic clustering.  These tools can be run offline
 or within Jupyer notebooks to faciliate interactive exploration.
 
 # installation and running
