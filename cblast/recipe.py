@@ -131,7 +131,7 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, est_neuron_per_cluster
 
 def cblast_workflow(npclient, dataset, neuronlist, est_neuron_per_cluster,
         prev_features=None, iterations=0,
-        use_saved_types=True, customtypes={}, postprocess=features.sigmoid_process(),
+        use_saved_types=True, customtypes={}, postprocess=features.scaled_process(0.5, 0.5, [0.4,0.4,0.2]),
         sort_types=True, minconn=3, roi_restriction=None):
     """Wrapper for "features.compute_connections_similarity_features" that allow users to provide
     initial features (instead of customtypes) and number of iterations.

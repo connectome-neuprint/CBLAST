@@ -52,6 +52,20 @@ def sigmoid_process(start = 10, stop = 30, wgt_in = 0.5, wgt_out = 0.5):
 
     return postprocess
 
+def piecewise_process(mid = 100, slope1=1.0, slope2=0.1, wgt_in = 0.5, wgt_out = 0.5):
+    """Apply weights based on two piecewise linear functions.                           
+
+    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.                                    
+    """ 
+    def postprocess(features_in, features_out):                                                                        
+        func = np.vectorize(lambda x: x*slope1 if x < mid else mid*slope1 +(x-mid)*slope2 )   
+        
+        features_in = features_in.apply(func)
+        features_out = features_out.apply(func)
+        return _combine_features([features_in, features_out], [wgt_in, wgt_out])                                       
+
+    return postprocess 
+
 def clipped_process(start = 3, stop = 50, wgt_in = 0.5, wgt_out = 0.5):
     """Clips values at the top and bottom of the range to 0 and the stop value respectively.
 
@@ -85,22 +99,41 @@ def noop_process(wgt_in, wgt_out):
 
     return postprocess
 
-def scaled_process_old(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
+def scaled_process(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
     """Disable input or output by setting the weight to 0.
 
-    Note: weights are simple scaling of features
+    The first weight corresponds to feature matrix that are normalized by the neurons
+    input and output size.  The second weight corresponds to a matrix where each
+    feature is treated independently and equally.  The final weight corresponds
+    to the size of the neuron.
 
-    default wgts for roioverlap_features and projection features is [0.25,0.6,0.15]
+    Emphasizing the first feature matrix will give more weight to the biggest relative weights.
+    Emphasizing the second will give more weight to the  smaller connections.  Emphasizing
+    the final one will give more weight to the absolute neuron size.
+
+    Note: default wgts for roioverlap_features and projection features is [0.25,0.6,0.15]
+    
+    Args:
+        wgt_in (float): weight for input feature vector
+        wgt_out (float): weight for output features vector
+        wgts (list): weights for the three feature matrices produced by this function
     """
 
     def postprocess(features_in, features_out):
         # re-create size array, norm everything
         sz_in = pd.DataFrame(features_in.sum(axis=1), columns=["post"])
         sz_out = pd.DataFrame(features_out.sum(axis=1), columns=["pre"])
-        features_in = features_in.div(features_in.sum(axis=1), axis=0)
-        features_out = features_out.div(features_in.sum(axis=1), axis=0)
 
+        # normalize the inputs and outputs
+        features_in = features_in.div(features_in.sum(axis=1), axis=0)
+        features_in = features_in.mul(1.0, fill_value=0)
+        features_out = features_out.div(features_out.sum(axis=1), axis=0)
+        features_out = features_out.mul(1.0, fill_value=0)
+
+        # combine input and output into one array
         features = _combine_features([features_in, features_out], [wgt_in, wgt_out])
+        
+        # make size only features
         features_sz = _combine_features([sz_in, sz_out], [wgt_in, wgt_out])
 
         from sklearn.preprocessing import StandardScaler
@@ -108,6 +141,7 @@ def scaled_process_old(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
   
         features_arr = features.values
 
+        # normalize each feature
         scaledfeatures = StandardScaler().fit_transform(features_arr)
         aux_features_arr = features_sz.values
         aux_scaledfeatures = StandardScaler().fit_transform(aux_features_arr)
@@ -131,8 +165,14 @@ def scaled_process_old(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
     return postprocess 
 
 def extract_roioverlap_features(npclient, dataset, neuronlist,
-        postprocess=sigmoid_process(70, 230, 0.5, 0.5), sym_excl = ["(L)", "(R)"], roilist=None, POLYADIC_HACK=5):
+        postprocess=scaled_process(0.5, 0.5, [0.66,0,0.33]),
+        sym_excl = ["(L)", "(R)"], roilist=None, POLYADIC_HACK=5):
     """Extract simple ROI overlap features. 
+    
+    Note: Some tests show that the scaled_process works well when emphasizing the input/output normalization
+    and absolute size feature matrices.  Scaling each feature independently may not make as much sense since
+    the synapse counts for a neuron across ROIs are probably in the same scale.  Doing a simple piecewise_process
+    also appears to work well by emphasizing the smaller connections a little more (e.g. mid=100, slope1=1, slope2=0.1).
 
     Args:
         npclient (object): neuprint client object
@@ -145,6 +185,7 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
         POLYADIC_HACK (int): temporary hack to account for outputs typically driving multiple inputs, set this
         to one if synapses are 1:1 (TODO: either base on the number of connections or reweight output and input
         to have roughly the same magnitude)
+
     Returns:
         dataframe: index: body ids; columns: different features 
     """
@@ -242,12 +283,16 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
 
 
 def extract_projection_features(npclient, dataset, neuronlist,  
-        postprocess=sigmoid_process(70, 230, 0.5, 0.5), sym_excl = ["(L)", "(R)"], roilist=None ):
+        postprocess=scaled_process(0.5, 0.5, [0.66,0,0.33]), sym_excl = ["(L)", "(R)"], roilist=None ):
     """Extract features from a list of neurons.
 
     This function generates features based on ROI connectivity pattern
     of the neurons and their partners.
-
+    
+    Note: Some tests show that the scaled_process works well when emphasizing the input/output normalization
+    and absolute size feature matrices.  Scaling each feature independently may not make as much sense since
+    the synapse counts for a neuron across ROIs are probably in the same scale.
+    
     Args:
         npclient (object): neuprint client object
         dataset (str): name of neuprint dataset
@@ -470,7 +515,7 @@ def extract_projection_features(npclient, dataset, neuronlist,
     return postprocess(features_in, features_out)
 
 def compute_connection_similarity_features(npclient, dataset, neuronlist,
-        use_saved_types=True, customtypes={}, postprocess=sigmoid_process(),
+        use_saved_types=True, customtypes={}, postprocess=scaled_process(0.5, 0.5, [0.4,0.4,0.2]),
         sort_types=True, pattern_only=False, minconn=3, roi_restriction=None,
         dump_replay=False, replay_data = None):
     """Computes an pairwise adjacency matrix for the given set of neurons.
@@ -479,6 +524,13 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
     are restricted to the roi_restriction if provided.  The caller can specify
     whether common inputs and outputs should be grouped based on type.  The returned
     adjacency matrix will sort the body ids based on clustering.
+
+    Note: postprocessing seems to work best by balancing between a matrix that emphasizes
+    stronger connections and one that treates all connections the same.  Scaling the connections
+    per neurons is probably important due to reconstruction incompleteness and some neurons
+    just having bigger connections.  Similarly, because connections to a given neuron might
+    have different impact compared to connections to another neuron, some feature indepedent
+    scaling is probably also useful.
 
     Args:
         npclient (object): neuprint client object

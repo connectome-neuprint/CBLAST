@@ -21,7 +21,7 @@ To use the library, import cblast.
 
 # todo
 
-* add example notebooks
+* add example notebook for basic usage and how to debug clusters
 * metrics for outlier analysis
 * provide option to generate features without neuprint (from pre-generated
 connectivity and ROI data)
