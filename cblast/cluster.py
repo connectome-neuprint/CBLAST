@@ -159,9 +159,7 @@ def report_diffs(type2bodies1, type2bodies2, features1 = None, features2 = None)
     Returns:
         (list, list): Lists of pairs of bodies in different clusters compared to the
         first partition and second partition respectively.  Sorted so the
-        first entry represents the largest difference between differences
-        (a large value means the two bodies are in very disimilar with respect
-        to one set of features despite being similar in the other feautures)
+        first entry represents the largest difference.
     """
    
     part1 = {}
