@@ -25,7 +25,8 @@ CBLAST tries to cluster nodes in a graph. The edge weights are determined by syn
 For good cluster results, the dataset should have the following:
 
 * all (most) connections from the set of neurons should be traced at least within a given region (i.e., a dense connectome is preferable)
-* defined, synapse-level brain regions, which is useful for performing initial neuron clustering.
+* defined, synapse-level brain regions, which is useful (though not strictly required) for performing initial neuron clustering.
+* be loaded into neuprint
 
 The general CBLAST strategy is shown in the image below.  The algorithm clusters neurons based on the cell types they connect to, similar neurons should connect to similar things in similar ways.  However, this means one needs cell types to determine cell types.  CBLAST is an iterative approach that starts with initial putative cell types and successive refinement.
 
