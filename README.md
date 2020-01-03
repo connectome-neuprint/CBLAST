@@ -17,7 +17,25 @@ Install [conda](https://docs.conda.io/en/latest/miniconda.html).
     % export NEUPRINT_APPLICATION_CREDENTIALS=YOURTOKEN
     % jupyter notebook 
 
-To use the library, import cblast.
+To use the library, import cblast.  Please see the [notebook example](/cblast%20example.ipynb).
+
+# background and data requirements
+
+CBLAST tries to cluster nodes in a graph. The edge weights are determined by synapses.  The nodes are neurons.
+For good cluster results, the dataset should satisfy the following:
+
+* all (most) connections from the set of neurons should be traced at least within a given region (i.e., a dense connectome is preferable)
+* definition of brain regions, which is useful for performing initial neuron clustering.
+
+The general CBLAST strategy is shown in the image below.  The algorithm clusters neurons based on the cell types they connect to, similar neurons should connect to similar things in similar ways.  However, this means one needs cell types to determine cell types.  CBLAST is an iterative approach that starts with initial putative cell types and successive refinement.
+
+![cblast](cblast.png)
+
+To generate the initial putative types, one can use morphological matching algorithms like NBLAST or generate features based on how a neuron intersects various brain regions.  This library provides provides algorithms that considers upstream and downstream projections of a given neuron.
+
+Because the final determination of cell type groupings requires a somewhat subjective determination of when certain feature differences or similarities mean one should split or group neurons, this tool was also designed for visual exploration.  Cluster plots can provide clues about what should be grouped.  Exact feature differences or similarities can be visualized.  The morphology of these neurons should then be inspected
+using a tool like neuprint explorer. 
+
 
 # todo
 
