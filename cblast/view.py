@@ -11,7 +11,7 @@ import pandas as pd
 import hvplot.pandas
 import plotly
 import plotly.graph_objects as go
-
+import numpy as np
 
 def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=None, tsne=False):
     """Plot each neuron on a 2D scatter plot, which should reveal clusters.
@@ -175,6 +175,179 @@ def features_compareheatmap(features):
     # reshape to 1D array or rates with a month and year for each row.
     df = pd.DataFrame(featuresx.stack(), columns=['score']).reset_index()
     return df.hvplot.heatmap(x="feature", y="bodyid", C="score", colorbar=True, width=900, height=400)
+
+
+def connection_differences(npclient, dataset, neuronlist):
+    """Show top inputs and outputs for set of neurons.
+
+    Args:
+        npclient (object): neuprint client object
+        dataset (str): name of neuprint dataset
+        neuronlist (list): list of body ids
+    Returns:
+        (dataframe, dataframe): 
+
+    """
+    
+    # fetch all connections from this cell type
+    query = f"MATCH (n :Neuron)-[x :ConnectsTo]-(m) WHERE n.bodyId in {neuronlist} RETURN n.bodyId AS bodyId, n.instance AS instance, x.weight AS weight, m.bodyId AS bodyId2, m.type AS type2, (startNode(x) = n) as isOutput, n.status AS body1status, m.status AS body2status, m.cropped AS iscropped2, n.cropped AS iscropped1"
+    connections = npclient.fetch_custom(query, dataset=dataset)
+
+    minweight = 3 # ignore connections for canonical inputs or outputs that are below this
+    celltype_lists_inputs = {}
+    celltype_lists_outputs = {}
+    for idx, row in connections.iterrows():
+        bodyid = row["bodyId"]
+        type_status = row["body1status"]
+        type_status2 = row["body2status"] 
+        is_output = row["isOutput"]
+        is_cropped1 = row["iscropped1"]
+        is_cropped2 = row["iscropped2"]
+
+        # might as well ignore connection as well if not to traced
+        if type_status2 != "Traced":
+            continue
+
+        conntype = row["type2"]
+        hastype = True
+        if conntype is None or conntype == "":
+            conntype = str(row["bodyId2"])
+            hastype = False
+
+        # don't consider the edge for something that is leaves and has not type
+        if not hastype and is_cropped2:
+            continue
+            
+        # don't consider a weak edge
+        if row["weight"] < minweight:
+            continue
+            
+        if is_output:       
+            if bodyid not in celltype_lists_outputs:
+                celltype_lists_outputs[bodyid] = []
+
+            # add body id in the middle to allow sorting
+            celltype_lists_outputs[bodyid].append((row["weight"], row["bodyId2"], {"partner": conntype, "weight": row["weight"], "hastype": hastype, "important": False}))
+        else:       
+            if bodyid not in celltype_lists_inputs:
+                celltype_lists_inputs[bodyid] = []
+
+            # add body id in the middle to allow sorting
+            celltype_lists_inputs[bodyid].append((row["weight"], row["bodyId2"], {"partner": conntype, "weight": row["weight"], "hastype": hastype, "important": False}))
+
+    importance_cutoff = 0.25 # ignore connections after the top 25% (with some error margin)
+    
+    # sort each list and cut-off anything below 25% with some error bar  
+    def sort_lists(cell_type_lists):  
+        for bid, info in cell_type_lists.items():
+            important_count = 0
+            info.sort()
+            info.reverse()
+            total = 0
+            for (weight, ignore, val) in info:
+                total += weight
+
+            count = 0
+            threshold = 0
+            for (weight, ignore, val) in info:
+                # ignore connections below thresholds (but take at least 5 inputs and outputs)
+                if weight < threshold and important_count > 5:
+                    break
+                important_count += 1
+                val["important"] = True
+
+                count += weight
+                # set threshold based on connection that gets to 50%
+                if threshold == 0 and count > (total*importance_cutoff):
+                    threshold = weight - weight**(1/2)
+    sort_lists(celltype_lists_inputs)
+    sort_lists(celltype_lists_outputs)
+
+    def _generate_feature_table(celltype_lists):
+        # add shared dict to a globally sorted list from each partner
+        global_queue = []
+        for neuron in neuronlist:
+            if neuron in celltype_lists:
+                for (weight, bid2, val) in celltype_lists[neuron]:
+                    val["examined"] = False
+                    if val["important"]:
+                        global_queue.append((weight, bid2, neuron, val))
+        global_queue.sort()
+        global_queue.reverse()
+        
+        # provide rank from big to small and provide connection count
+        # (count delineated by max in row but useful for bookkeeping)
+        celltype_rank = []
+        
+        # from large to small make a list of common partners, each time another is added, iterate through
+        # other common partners to find a match (though we need to look at the whole list beyond the cut-off)
+        for (count, ignore, neuron, entry) in global_queue:
+            if entry["examined"]:
+                continue
+            celltype_rank.append((entry["partner"], count, entry["hastype"]))
+        
+            # check for matches for each cell type instance in neuron working set
+            for neuron in neuronlist:
+                if neuron in celltype_lists:
+                    for (weight, ignore, val) in celltype_lists[neuron]:
+                        if not val["examined"] and val["partner"] == entry["partner"] and val["hastype"] == entry["hastype"]:
+                            val["examined"] = True
+                            break
+                        
+        # generate feature map for neuron
+        features = np.zeros((len(neuronlist), len(celltype_rank)))
+        
+        iter1 = 0
+        for neuron in neuronlist:
+            connlist = []
+            # it is possible that a neuron has no input or outputs
+            if neuron in celltype_lists:
+                connlist = celltype_lists[neuron]
+            match_list = {}
+            for (weight, ignore, val) in connlist:
+                matchkey = (val["partner"], val["hastype"])
+                if matchkey not in match_list:
+                    match_list[matchkey] = []
+                match_list[matchkey].append(weight)
+            cfeatures = []
+            for (ctype, count, hastype) in celltype_rank:
+                rank_match = (ctype, hastype)
+                if rank_match in match_list:
+                    cfeatures.append(match_list[rank_match][0])
+                    del match_list[rank_match][0]
+                    if len(match_list[rank_match]) == 0:
+                        del match_list[rank_match]
+                else:
+                    cfeatures.append(0)
+            features[iter1] = cfeatures
+            iter1 +=1
+                
+        ranked_names = []
+        for (ctype, count, hastype) in celltype_rank:
+            ranked_names.append(ctype)
+            
+        return pd.DataFrame(features, index=neuronlist, columns=ranked_names)
+    features_inputs = _generate_feature_table(celltype_lists_inputs)
+    features_outputs = _generate_feature_table(celltype_lists_outputs)
+    
+    # TODO add heatmap viz that shows +/- % from median
+
+    #features_inputs = features_inputs[features_inputs.median().sort_values(ascending=False).index]
+    #features_outputs = features_outputs[features_outputs.median().sort_values(ascending=False).index]
+
+
+    imed = features_inputs.median()   
+    omed = features_outputs.median()
+    i_order = np.argsort(imed)[::-1]
+    o_order = np.argsort(omed)[::-1]
+
+    features_inputs = features_inputs.iloc[:, i_order]
+    features_outputs = features_outputs.iloc[:, o_order]
+
+    features_inputs.loc["median"] = features_inputs.median()
+    features_outputs.loc["median"] = features_outputs.median()
+
+    return features_inputs, features_outputs
 
 
 def features_radarchart(features, clusters=None, htmlfile=None):

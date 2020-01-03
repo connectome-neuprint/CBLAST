@@ -5,6 +5,8 @@ from . import features
 from . import cluster
 from . import utils
 
+import pandas as pd
+
 def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
         cluster_neighbors=False, neighbor_npc=10, iterations=0, postprocess_pro=None, postprocess_conn=None,
         customtypes_prior={}, saved_projection=""):
