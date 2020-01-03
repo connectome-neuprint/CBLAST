@@ -28,6 +28,9 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
     body id index.
     """
     from sklearn.manifold import TSNE
+    
+    import warnings
+    warnings.filterwarnings("ignore")
 
     # set output destination
     reset_output()

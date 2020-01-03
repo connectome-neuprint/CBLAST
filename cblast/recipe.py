@@ -7,7 +7,7 @@ from . import utils
 
 def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
         cluster_neighbors=False, neighbor_npc=10, iterations=0, postprocess_pro=None, postprocess_conn=None,
-        saved_projection=""):
+        customtypes_prior={}, saved_projection=""):
     """Generate features through speculative iteration.
 
     The algorithm first generates features using neuron projections.  These
@@ -27,7 +27,8 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
         (default 0: automatically determine the number of iterations):
         postprocess_pro (func): *_process function option for projection features
         postprocess_conn (func): *_process function option for connectivity features
-        
+        customtypes_prior (dict or df): mapping of body ids to a cluster id (over-rules pre-exising types)
+        (should probably only use types that are confidently defined)
         saved_projection (str): location of file to store or restore features
    
     Return:
@@ -48,6 +49,9 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
             features_pro = features.load_features(saved_projection)
         except:
             pass
+    
+    if customtypes_prior is not None and type(customtypes_prior) == pd.DataFrame:
+        customtypes_prior =  dict(zip(customtypes_prior["bodyid"], customtypes_prior["type"]))
 
     num_neurons = len(neuronlist)
     # if not features are read from disk, compute features
@@ -99,6 +103,8 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
         customtypes = {}
         if neuron2cluster is not None:
             customtypes =  dict(zip(neuron2cluster["bodyid"], neuron2cluster["type"]))
+        if customtypes_prior is not None:
+            customtypes.update(customtypes_prior)
 
         p1, p2, p3, p4, old_body2type = replay_data
         old_body2type.update(customtypes)
