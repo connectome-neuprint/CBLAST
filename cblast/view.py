@@ -336,8 +336,8 @@ def connection_differences(npclient, dataset, neuronlist):
     #features_outputs = features_outputs[features_outputs.median().sort_values(ascending=False).index]
 
 
-    imed = features_inputs.median()   
-    omed = features_outputs.median()
+    imed = features_inputs.var()   
+    omed = features_outputs.var()
     i_order = np.argsort(imed)[::-1]
     o_order = np.argsort(omed)[::-1]
 
