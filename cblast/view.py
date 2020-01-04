@@ -257,9 +257,10 @@ def connection_differences(npclient, dataset, neuronlist):
                 val["important"] = True
 
                 count += weight
-                # set threshold based on connection that gets to 50%
+                # disable marking similar strength neurons as important
+                # since it doesn't matter for the feature table
                 if threshold == 0 and count > (total*importance_cutoff):
-                    threshold = weight - weight**(1/2)
+                    threshold = weight # - weight**(1/2)
     sort_lists(celltype_lists_inputs)
     sort_lists(celltype_lists_outputs)
 
