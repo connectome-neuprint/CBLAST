@@ -517,7 +517,7 @@ def extract_projection_features(npclient, dataset, neuronlist,
 def compute_connection_similarity_features(npclient, dataset, neuronlist,
         use_saved_types=True, customtypes={}, postprocess=scaled_process(0.5, 0.5, [0.4,0.4,0.2]),
         sort_types=True, pattern_only=False, minconn=3, roi_restriction=None,
-        dump_replay=False, replay_data = None):
+        dump_replay=False, replay_data = None, morph_only=False):
     """Computes an pairwise adjacency matrix for the given set of neurons.
 
     This function looks at inputs and outputs for the set of neurons.  The connections
@@ -547,6 +547,7 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
         roi_restriction (list): ROIs to restrict feature extraction (default: no restriction)
         dump_replay (boolean): dumps features after parsing neuprint
         replay_data (tuple): data to enable replay
+        morph_only (boolean): EXPERIMENTAL FEATURE only uses the root morpho type for each prior type
     Returns:
         dataframe: index: body ids; columns: different features 
     
@@ -572,7 +573,8 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
   
     features_in = None
     features_out = None
-   
+    import re
+
     if customtypes is not None and type(customtypes) == pd.DataFrame:
         customtypes =  dict(zip(customtypes["bodyid"], customtypes["type"]))
 
@@ -600,6 +602,10 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                             feat_type = customtypes[feat_type]
                         elif use_saved_types and row["type"] is not None and row["type"] != "":
                             feat_type = row["type"]
+
+                        if morph_only:
+                            if len(re.findall(r".*_[a-z]", feat_type)) > 0:
+                                feat_type = feat_type[:-2]
                     else:
                         common_type = ""
                         if feat_type in customtypes:
@@ -608,6 +614,10 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                             common_type = row["type"]
                         elif pattern_only:
                             common_type = "ph"
+                        
+                        if morph_only:
+                            if len(re.findall(r".*_[a-z]", common_type)) > 0:
+                                common_type = common_type[:-2]
                         if common_type != "":
                             body2type[feat_type] = common_type
 
