@@ -515,7 +515,7 @@ def extract_projection_features(npclient, dataset, neuronlist,
     return postprocess(features_in, features_out)
 
 def compute_connection_similarity_features(npclient, dataset, neuronlist,
-        use_saved_types=True, customtypes={}, postprocess=scaled_process(0.5, 0.5, [0.4,0.4,0.2]),
+        use_saved_types=True, customtypes={}, postprocess=scaled_process(0.5, 0.5, [0.9,0.0,0.1]),
         sort_types=True, pattern_only=False, minconn=3, roi_restriction=None,
         dump_replay=False, replay_data = None, morph_only=False):
     """Computes an pairwise adjacency matrix for the given set of neurons.
