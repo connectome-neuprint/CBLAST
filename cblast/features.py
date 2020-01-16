@@ -597,11 +597,15 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                         continue
                     feat_type = row["body2"]
 
+                    row_type = row["type"]
+                    row_type = row_type.replace("put_", "")
+                    row_type = row_type.replace("_pct", "")
+
                     if not sort_types:
                         if feat_type in customtypes:
                             feat_type = customtypes[feat_type]
-                        elif use_saved_types and row["type"] is not None and row["type"] != "":
-                            feat_type = row["type"]
+                        elif use_saved_types and row_type is not None and row_type != "":
+                            feat_type = row_type
 
                         if morph_only:
                             if len(re.findall(r".*_[a-z]", feat_type)) > 0:
@@ -610,8 +614,8 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                         common_type = ""
                         if feat_type in customtypes:
                             common_type = customtypes[feat_type]
-                        elif use_saved_types and row["type"] is not None and row["type"] != "":
-                            common_type = row["type"]
+                        elif use_saved_types and row_type is not None and row_type != "":
+                            common_type = row_type
                         elif pattern_only:
                             common_type = "ph"
                         
