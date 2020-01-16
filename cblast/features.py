@@ -598,9 +598,9 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                     feat_type = row["body2"]
 
                     row_type = row["type"]
-                    if row_type is not None:
-                        row_type = row_type.replace("put_", "")
-                        row_type = row_type.replace("_pct", "")
+                    #if row_type is not None:
+                    #    row_type = row_type.replace("put_", "")
+                    #    row_type = row_type.replace("_pct", "")
 
                     if not sort_types:
                         if feat_type in customtypes:
