@@ -609,7 +609,7 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                             feat_type = row_type
 
                         if morph_only:
-                            if len(re.findall(r".*_[a-z]", feat_type)) > 0:
+                            if len(re.findall(r"^.*_[a-z]$", feat_type)) > 0:
                                 feat_type = feat_type[:-2]
                     else:
                         common_type = ""
@@ -621,7 +621,7 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
                             common_type = "ph"
                         
                         if morph_only:
-                            if len(re.findall(r".*_[a-z]", common_type)) > 0:
+                            if len(re.findall(r"^.*_[a-z]$", common_type)) > 0:
                                 common_type = common_type[:-2]
                         if common_type != "":
                             body2type[feat_type] = common_type
