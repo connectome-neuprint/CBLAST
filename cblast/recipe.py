@@ -7,7 +7,7 @@ from . import utils
 
 import pandas as pd
 
-def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
+def cblast_workflow_simple(npclient, neuronlist, npc, premode="pro",
         cluster_neighbors=False, neighbor_npc=10, iterations=0, postprocess_pro=None, postprocess_conn=None,
         customtypes_prior={}, saved_projection=""):
     """Generate features through speculative iteration.
@@ -18,7 +18,6 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
 
     Args:
         npclient (object): neuprint client object
-        dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
         premode (str): feature initialization mode ("pro", "conn", or "nonit" for projectome, connectivity,
         or non iterative features")
@@ -62,22 +61,22 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
         npc_round1 = npc
         if cluster_neighbors:
             npc_round1 = neighbor_npc
-            new_neuronlist = utils.extract_neighbors(npclient, dataset, neuronlist) 
+            new_neuronlist = utils.extract_neighbors(npclient, neuronlist)
         num_neurons = len(new_neuronlist)
 
         if premode == "pro": 
             # generate projection features or body id connectivity features
             if postprocess_pro is not None:
-                features_pro = features.extract_projection_features(npclient, dataset, new_neuronlist, postprocess=postprocess_pro)
+                features_pro = features.extract_projection_features(npclient, new_neuronlist, postprocess=postprocess_pro)
             else:
-                features_pro = features.extract_projection_features(npclient, dataset, new_neuronlist)
+                features_pro = features.extract_projection_features(npclient, new_neuronlist)
         elif premode == "conn":
             if postprocess_pro is not None:
-                features_pro = features.compute_connection_similarity_features(npclient, dataset, new_neuronlist, use_saved_types=False, postprocess=postprocess_pro)
+                features_pro = features.compute_connection_similarity_features(npclient, new_neuronlist, use_saved_types=False, postprocess=postprocess_pro)
             else:
-                features_pro = features.compute_connection_similarity_features(npclient, dataset, new_neuronlist, use_saved_types=False)
+                features_pro = features.compute_connection_similarity_features(npclient, new_neuronlist, use_saved_types=False)
         else:
-            features_pro = non_iterative_features(npclient, dataset, new_neuronlist)
+            features_pro = non_iterative_features(npclient, new_neuronlist)
         
         if saved_projection != "":
             features.save_features(features_pro, saved_projection)
@@ -94,9 +93,9 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
     # get and save all ccnnectivity features
     replay_data = None
     if postprocess_conn is not None:
-        replay_data = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, postprocess=postprocess_conn, dump_replay=True)
+        replay_data = features.compute_connection_similarity_features(npclient, neuronlist, use_saved_types=False, postprocess=postprocess_conn, dump_replay=True)
     else:
-        replay_data = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, dump_replay=True)
+        replay_data = features.compute_connection_similarity_features(npclient, neuronlist, use_saved_types=False, dump_replay=True)
 
     # compute type features based on predicted clusters
     num_iterations = 0
@@ -114,9 +113,9 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
 
         # compute type features based on predicted clusters
         if postprocess_conn is not None:
-            features_type = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, postprocess=postprocess_conn, customtypes=customtypes, replay_data=replay_data)
+            features_type = features.compute_connection_similarity_features(npclient, neuronlist, use_saved_types=False, postprocess=postprocess_conn, customtypes=customtypes, replay_data=replay_data)
         else:
-            features_type = features.compute_connection_similarity_features(npclient, dataset, neuronlist, use_saved_types=False, customtypes=customtypes, replay_data=replay_data)
+            features_type = features.compute_connection_similarity_features(npclient, neuronlist, use_saved_types=False, customtypes=customtypes, replay_data=replay_data)
 
         # iteratively refine to specified limit or when no improvement found
         if num_iterations == iterations:
@@ -140,7 +139,7 @@ def cblast_workflow_simple(npclient, dataset, neuronlist, npc, premode="pro",
 
     return features_type
 
-def cblast_workflow(npclient, dataset, neuronlist, npc,
+def cblast_workflow(npclient, neuronlist, npc,
         prev_features=None, iterations=0,
         use_saved_types=True, customtypes={}, postprocess=features.scaled_process(0.5, 0.5, [0.4,0.4,0.2]),
         sort_types=True, minconn=3, roi_restriction=None):
@@ -152,7 +151,6 @@ def cblast_workflow(npclient, dataset, neuronlist, npc,
 
     Args:
         npclient (object): neuprint client object
-        dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
         npc (int): estimated number of neurons per cluster (set high?)
         prev_features (dataframe): features to use for clustering if available
@@ -185,7 +183,7 @@ def cblast_workflow(npclient, dataset, neuronlist, npc,
 
     # get and save all ccnnectivity features
     replay_data = None
-    replay_data = features.compute_connection_similarity_features(npclient, dataset, neuronlist,
+    replay_data = features.compute_connection_similarity_features(npclient, neuronlist,
             use_saved_types=use_saved_types, custom_types=custom_types, postprocess=postprocess, 
             sort_types=sort_types, minconnn=minconn, roi_restriction=roi_restriction, dump_replay=True)
 
@@ -204,7 +202,7 @@ def cblast_workflow(npclient, dataset, neuronlist, npc,
         replay_data_mod = (p1,p2,p3,p4,old_body2type)
 
         # compute type features based on predicted clusters
-        replay_data = features.compute_connection_similarity_features(npclient, dataset, neuronlist,
+        replay_data = features.compute_connection_similarity_features(npclient, neuronlist,
                 use_saved_types=use_saved_types, custom_types=custom_types, postprocess=postprocess, 
                 sort_types=sort_types, minconnn=minconn, roi_restriction=roi_restriction, replay_data=replay_data_mod)
         # iteratively refine to specified limit or when no improvement found
@@ -223,12 +221,11 @@ def cblast_workflow(npclient, dataset, neuronlist, npc,
 
     return features_type
 
-def non_iterative_features(npclient, dataset, neuronlist, wgts=[0.4,0.4,0.2]):
+def non_iterative_features(npclient, neuronlist, wgts=[0.4,0.4,0.2]):
     """Computes features based on connection distribution, roi projections, and roi overlap.
 
     Args:
         npclient (object): neuprint client object
-        dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
         wgts (list): relative weight for connection distribution, projection, and roi overlap features respectively.
     
@@ -237,9 +234,9 @@ def non_iterative_features(npclient, dataset, neuronlist, wgts=[0.4,0.4,0.2]):
 
     """
 
-    dist_features = features.compute_connection_similarity_features(npclient, dataset, neuronlist, pattern_only=True)
-    pro_features = features.extract_projection_features(npclient, dataset, neuronlist)
-    overlap_features = features.extract_roioverlap_features(npclient, dataset, neuronlist)
+    dist_features = features.compute_connection_similarity_features(npclient, neuronlist, pattern_only=True)
+    pro_features = features.extract_projection_features(npclient, neuronlist)
+    overlap_features = features.extract_roioverlap_features(npclient, neuronlist)
 
     return features._combine_features([dist_features, pro_features, overlap_features], wgts)
 

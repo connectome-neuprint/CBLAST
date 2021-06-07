@@ -177,12 +177,11 @@ def features_compareheatmap(features):
     return df.hvplot.heatmap(x="feature", y="bodyid", C="score", colorbar=True, width=900, height=400)
 
 
-def connection_differences(npclient, dataset, neuronlist):
+def connection_differences(npclient, neuronlist):
     """Show top inputs and outputs for set of neurons.
 
     Args:
         npclient (object): neuprint client object
-        dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
     Returns:
         (dataframe, dataframe): 
@@ -191,7 +190,7 @@ def connection_differences(npclient, dataset, neuronlist):
     
     # fetch all connections from this cell type
     query = f"MATCH (n :Neuron)-[x :ConnectsTo]-(m) WHERE n.bodyId in {neuronlist} RETURN n.bodyId AS bodyId, n.instance AS instance, x.weight AS weight, m.bodyId AS bodyId2, m.type AS type2, (startNode(x) = n) as isOutput, n.status AS body1status, m.status AS body2status, m.cropped AS iscropped2, n.cropped AS iscropped1"
-    connections = npclient.fetch_custom(query, dataset=dataset)
+    connections = npclient.fetch_custom(query)
 
     minweight = 3 # ignore connections for canonical inputs or outputs that are below this
     celltype_lists_inputs = {}

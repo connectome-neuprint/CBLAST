@@ -164,7 +164,7 @@ def scaled_process(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
 
     return postprocess 
 
-def extract_roioverlap_features(npclient, dataset, neuronlist,
+def extract_roioverlap_features(npclient, neuronlist,
         postprocess=scaled_process(0.5, 0.5, [0.66,0,0.33]),
         sym_excl = ["(L)", "(R)"], roilist=None, POLYADIC_HACK=5):
     """Extract simple ROI overlap features. 
@@ -176,7 +176,6 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
 
     Args:
         npclient (object): neuprint client object
-        dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
         postprocess (func): set with *_process function (each function allows users to set input and output to 0)
         (default sets outputs to have 5x weight of inputs as a hack for Dropholia polyadic connections)
@@ -207,7 +206,7 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
     superrois = None
     if roilist is None:
         roiquery = f"MATCH (m :Meta) RETURN m.superLevelRois AS rois"
-        roires = npclient.fetch_custom(roiquery, dataset=dataset)
+        roires = npclient.fetch_custom(roiquery)
         superrois = set(roires["rois"].iloc[0])
     else:
         superrois = set(roilist)
@@ -227,7 +226,7 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
         print(f"fetch batch {iter1}")
         
         query = overlapquery.format(currblist)
-        res = npclient.fetch_custom(query, dataset=dataset)
+        res = npclient.fetch_custom(query)
 
         for idx, row in res.iterrows():
             roiinfo = json.loads(row["roiInfo"])
@@ -282,7 +281,7 @@ def extract_roioverlap_features(npclient, dataset, neuronlist,
     return postprocess(features_in, features_out)
 
 
-def extract_projection_features(npclient, dataset, neuronlist,  
+def extract_projection_features(npclient, neuronlist,
         postprocess=scaled_process(0.5, 0.5, [0.66,0,0.33]), sym_excl = ["(L)", "(R)"], roilist=None ):
     """Extract features from a list of neurons.
 
@@ -295,7 +294,6 @@ def extract_projection_features(npclient, dataset, neuronlist,
     
     Args:
         npclient (object): neuprint client object
-        dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
         postprocess (func): set with *_process function (each function allows users to set input and output to 0)
         sym_excl (list(str)): a list of substrings to exclude from the ROI list (specific to hemibrain for now)
@@ -336,7 +334,7 @@ def extract_projection_features(npclient, dataset, neuronlist,
     superrois = None
     if roilist is None:
         roiquery = f"MATCH (m :Meta) RETURN m.superLevelRois AS rois"
-        roires = npclient.fetch_custom(roiquery, dataset=dataset)
+        roires = npclient.fetch_custom(roiquery)
         superrois = set(roires["rois"].iloc[0])
         superrois.add("None")
     else:
@@ -365,8 +363,8 @@ def extract_projection_features(npclient, dataset, neuronlist,
         queryout = outputsquery.format(currblist)
 
         print(f"fetch batch {iter1}")
-        resin = npclient.fetch_custom(queryin, dataset=dataset)
-        resout = npclient.fetch_custom(queryout, dataset=dataset)
+        resin = npclient.fetch_custom(queryin)
+        resout = npclient.fetch_custom(queryout)
 
         for index, row in resin.iterrows():
             b1 = row["body1"]
@@ -514,7 +512,7 @@ def extract_projection_features(npclient, dataset, neuronlist,
 
     return postprocess(features_in, features_out)
 
-def compute_connection_similarity_features(npclient, dataset, neuronlist,
+def compute_connection_similarity_features(npclient, neuronlist,
         use_saved_types=True, customtypes={}, postprocess=scaled_process(0.5, 0.5, [0.9,0.0,0.1]),
         sort_types=True, pattern_only=False, minconn=3, roi_restriction=None,
         dump_replay=False, replay_data = None, morph_only=False, hack_test=False):
@@ -534,7 +532,6 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
 
     Args:
         npclient (object): neuprint client object
-        dataset (str): name of neuprint dataset
         neuronlist (list): list of body ids
         use_saved_types(boolean): use types stored in neuprint already to guide clustering
         customtypes (dict or df): mapping of body ids to a cluster id (over-rules pre-exising types)
@@ -591,7 +588,7 @@ def compute_connection_similarity_features(npclient, dataset, neuronlist,
             print(f"fetch batch {iter1}")
 
             def collect_features(query, io_list, common_io):
-                res = npclient.fetch_custom(query, dataset=dataset)
+                res = npclient.fetch_custom(query)
                 for idx, row in res.iterrows():
                     if row["body1"] == row["body2"]:
                         continue
