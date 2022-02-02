@@ -6,10 +6,11 @@ Contains a set of functions for extracting features for a list of neurons.
 import json
 import numpy as np
 import pandas as pd
+from multiprocessing.pool import ThreadPool
 
 def save_features(features, filename):
     """Save features to disk.
-    
+
     Args:
         features (dataframe): features for a set of bodies (body ids should be the index)
         filename (str): name of file
@@ -20,7 +21,7 @@ def save_features(features, filename):
 
 def load_features(filename):
     """Load features from disk.
-    
+
     Args:
         filename (str): name of file
     Returns:
@@ -36,11 +37,11 @@ def sigmoid_process(start = 10, stop = 30, wgt_in = 0.5, wgt_out = 0.5):
 
     Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
     """
-    
+
     def postprocess(features_in, features_out):
         #wgt_in = wgt_in**(1/2)
         #wgt_out = wgt_out**(1/2)
-   
+
         # create sigmoid function
         shift = (stop-start)/2+start
         scale = (stop-start)/4
@@ -53,18 +54,18 @@ def sigmoid_process(start = 10, stop = 30, wgt_in = 0.5, wgt_out = 0.5):
     return postprocess
 
 def piecewise_process(mid = 100, slope1=1.0, slope2=0.1, wgt_in = 0.5, wgt_out = 0.5):
-    """Apply weights based on two piecewise linear functions.                           
+    """Apply weights based on two piecewise linear functions.
 
-    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.                                    
-    """ 
-    def postprocess(features_in, features_out):                                                                        
-        func = np.vectorize(lambda x: x*slope1 if x < mid else mid*slope1 +(x-mid)*slope2 )   
-        
+    Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
+    """
+    def postprocess(features_in, features_out):
+        func = np.vectorize(lambda x: x*slope1 if x < mid else mid*slope1 +(x-mid)*slope2 )
+
         features_in = features_in.apply(func)
         features_out = features_out.apply(func)
-        return _combine_features([features_in, features_out], [wgt_in, wgt_out])                                       
+        return _combine_features([features_in, features_out], [wgt_in, wgt_out])
 
-    return postprocess 
+    return postprocess
 
 def clipped_process(start = 3, stop = 50, wgt_in = 0.5, wgt_out = 0.5):
     """Clips values at the top and bottom of the range to 0 and the stop value respectively.
@@ -74,7 +75,7 @@ def clipped_process(start = 3, stop = 50, wgt_in = 0.5, wgt_out = 0.5):
     def postprocess(features_in, features_out):
         #wgt_in = wgt_in**(1/2)
         #wgt_out = wgt_out**(1/2)
-   
+
         # create clip function
         func = np.vectorize(lambda x: 0 if x < start else (stop if x > stop else x))
 
@@ -87,14 +88,14 @@ def clipped_process(start = 3, stop = 50, wgt_in = 0.5, wgt_out = 0.5):
 def noop_process(wgt_in, wgt_out):
     """Simply uses input and output weights as is with no post-processing
     except for wgt_in and wgt_out.
-    
+
     Note: disable inputs or outputs by setting wgt_in or wgt_out to 0 respectively.
     """
 
     def postprocess(features_in, features_out):
         #wgt_in = wgt_in**(1/2)
         #wgt_out = wgt_out**(1/2)
-        
+
         return _combine_features([features_in, features_out], [wgt_in, wgt_out])
 
     return postprocess
@@ -112,7 +113,7 @@ def scaled_process(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
     the final one will give more weight to the absolute neuron size.
 
     Note: default wgts for roioverlap_features and projection features is [0.25,0.6,0.15]
-    
+
     Args:
         wgt_in (float): weight for input feature vector
         wgt_out (float): weight for output features vector
@@ -132,20 +133,20 @@ def scaled_process(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
 
         # combine input and output into one array
         features = _combine_features([features_in, features_out], [wgt_in, wgt_out])
-        
+
         # make size only features
         features_sz = _combine_features([sz_in, sz_out], [wgt_in, wgt_out])
 
         from sklearn.preprocessing import StandardScaler
         from sklearn.preprocessing import normalize
-  
+
         features_arr = features.values
 
         # normalize each feature
         scaledfeatures = StandardScaler().fit_transform(features_arr)
         aux_features_arr = features_sz.values
         aux_scaledfeatures = StandardScaler().fit_transform(aux_features_arr)
-    
+
         # ensure rows have the same magnitude -- this hopefully does not
         # impact the original vectors too much since each row should probably
         # be normalized in some way.
@@ -162,13 +163,13 @@ def scaled_process(wgt_in = 1.0, wgt_out = 1.0, wgts=[0.8, 0.1, 0.1]):
 
         return _combine_features([features_normdf, scaledfeatures_normdf, aux_scaledfeaturesdf], wgts)
 
-    return postprocess 
+    return postprocess
 
 def extract_roioverlap_features(npclient, neuronlist,
         postprocess=scaled_process(0.5, 0.5, [0.66,0,0.33]),
         sym_excl = ["(L)", "(R)"], roilist=None, POLYADIC_HACK=5):
-    """Extract simple ROI overlap features. 
-    
+    """Extract simple ROI overlap features.
+
     Note: Some tests show that the scaled_process works well when emphasizing the input/output normalization
     and absolute size feature matrices.  Scaling each feature independently may not make as much sense since
     the synapse counts for a neuron across ROIs are probably in the same scale.  Doing a simple piecewise_process
@@ -186,7 +187,7 @@ def extract_roioverlap_features(npclient, neuronlist,
         to have roughly the same magnitude)
 
     Returns:
-        dataframe: index: body ids; columns: different features 
+        dataframe: index: body ids; columns: different features
     """
 
     # TODO: handle left/right symmetry
@@ -197,7 +198,7 @@ def extract_roioverlap_features(npclient, neuronlist,
 
     overlapquery=f"WITH {{}} AS TARGETS MATCH (n :Neuron) WHERE n.bodyId in TARGETS\
         RETURN n.bodyId AS bodyId, n.roiInfo AS roiInfo"
-    
+
     # relevant rois
     inrois = set()
     outrois = set()
@@ -215,7 +216,7 @@ def extract_roioverlap_features(npclient, neuronlist,
     roi2roi = {}
     for roi in superrois:
         troi = roi
-        for excl in sym_excl: 
+        for excl in sym_excl:
             troi = troi.replace(excl, "")
         roi2roi[roi] = troi
     bodyinfo_in = {}
@@ -224,7 +225,7 @@ def extract_roioverlap_features(npclient, neuronlist,
     for iter1 in range(0, len(neuronlist), 500):
         currblist = neuronlist[iter1:(iter1+500)]
         print(f"fetch batch {iter1}")
-        
+
         query = overlapquery.format(currblist)
         res = npclient.fetch_custom(query)
 
@@ -239,9 +240,9 @@ def extract_roioverlap_features(npclient, neuronlist,
                     if val.get("pre", 0) > PRE_IMPORTANCECUTOFF:
                         inrois.add(roi)
                         if roi in bodyinfo_in[row["bodyId"]]:
-                            bodyinfo_in[row["bodyId"]][roi] += val.get("pre", 0) 
+                            bodyinfo_in[row["bodyId"]][roi] += val.get("pre", 0)
                         else:
-                            bodyinfo_in[row["bodyId"]][roi] = val.get("pre", 0) 
+                            bodyinfo_in[row["bodyId"]][roi] = val.get("pre", 0)
                     if val.get("post", 0) > POST_IMPORTANCECUTOFF:
                         outrois.add(roi)
                         if roi in bodyinfo_out[row["bodyId"]]:
@@ -271,12 +272,12 @@ def extract_roioverlap_features(npclient, neuronlist,
     featurenames = []
     for froi in inrois:
         featurenames.append(froi + "<=")
-    features_in = pd.DataFrame(features_in, index=neuronlist, columns=featurenames) 
-    
+    features_in = pd.DataFrame(features_in, index=neuronlist, columns=featurenames)
+
     featurenames = []
     for froi in outrois:
         featurenames.append(froi + "=>")
-    features_out = pd.DataFrame(features_out, index=neuronlist, columns=featurenames) 
+    features_out = pd.DataFrame(features_out, index=neuronlist, columns=featurenames)
 
     return postprocess(features_in, features_out)
 
@@ -287,11 +288,11 @@ def extract_projection_features(npclient, neuronlist,
 
     This function generates features based on ROI connectivity pattern
     of the neurons and their partners.
-    
+
     Note: Some tests show that the scaled_process works well when emphasizing the input/output normalization
     and absolute size feature matrices.  Scaling each feature independently may not make as much sense since
     the synapse counts for a neuron across ROIs are probably in the same scale.
-    
+
     Args:
         npclient (object): neuprint client object
         neuronlist (list): list of body ids
@@ -299,7 +300,7 @@ def extract_projection_features(npclient, neuronlist,
         sym_excl (list(str)): a list of substrings to exclude from the ROI list (specific to hemibrain for now)
         roilist (list): custom list of ROIs to use
     Returns:
-        dataframe: index: body ids; columns: different features 
+        dataframe: index: body ids; columns: different features
 
     TODO:
         * allow users to specify ROI/sub-ROIs to be used (currently only
@@ -345,7 +346,7 @@ def extract_projection_features(npclient, neuronlist,
     roi2roi = {}
     for roi in superrois:
         troi = roi
-        for excl in sym_excl: 
+        for excl in sym_excl:
             troi = troi.replace(excl, "")
         roi2roi[roi] = troi
 
@@ -477,7 +478,7 @@ def extract_projection_features(npclient, neuronlist,
 
         for froi in firstrois:
             froi = roi2roi[froi]
-            
+
             for sroi in secrois:
                 sroi = roi2roi[sroi]
                 key = froi + dilim + "(" + sroi +"<=)"
@@ -498,13 +499,13 @@ def extract_projection_features(npclient, neuronlist,
                 else:
                     equivclasses[key] = [key]
                 featurenames.append(key)
-        features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames) 
-        
+        features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames)
+
         if len(equivclasses):
             equivlists = []
             for key, arr in equivclasses.items():
                 equivlists.append(arr)
-            
+
             features = _sort_equiv_features(features, equivlists)
         return features
     features_in = set_features(features_in, inrois, "<=")
@@ -546,8 +547,8 @@ def compute_connection_similarity_features(npclient, neuronlist,
         replay_data (tuple): data to enable replay
         morph_only (boolean): EXPERIMENTAL FEATURE only uses the root morpho type for each prior type
     Returns:
-        dataframe: index: body ids; columns: different features 
-    
+        dataframe: index: body ids; columns: different features
+
     Note: only connection to traced neurons are considered.
 
     """
@@ -563,11 +564,11 @@ def compute_connection_similarity_features(npclient, neuronlist,
 
     # inputs and outputs for each body id
     # format: (name or id}: val
-    inputs_list = {} 
-    outputs_list = {} 
+    inputs_list = {}
+    outputs_list = {}
 
     body2type = {}
-  
+
     features_in = None
     features_out = None
     import re
@@ -576,91 +577,134 @@ def compute_connection_similarity_features(npclient, neuronlist,
         customtypes =  dict(zip(customtypes["bodyid"], customtypes["type"]))
 
     if replay_data is not None:
-        features_in, features_out, commonin, commonout, body2type = replay_data 
+        features_in, features_out, commonin, commonout, body2type = replay_data
     else:
-        for iter1 in range(0, len(neuronlist), 100):
-            currlist = neuronlist[iter1:iter1+100]
-            
-            outputsquery=f"WITH {currlist} AS TARGETS MATCH(n :Neuron)-[x :ConnectsTo]->(m :Neuron) WHERE n.bodyId in TARGETS AND m.status=\"Traced\" AND x.weight >= {minconn} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight ORDER BY weight DESC"
+        def collect_features(query, io_list, common_io):
+            res = npclient.fetch_custom(query)
+            for idx, row in res.iterrows():
+                if row["body1"] == row["body2"]:
+                    continue
+                feat_type = row["body2"]
 
-            inputsquery=f"WITH {currlist} AS TARGETS MATCH(n :Neuron)<-[x :ConnectsTo]-(m :Neuron) WHERE n.bodyId in TARGETS AND m.status=\"Traced\" AND x.weight >= {minconn} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight ORDER BY weight DESC"
-         
+                row_type = row["type"]
+                if row_type is not None:
+                    row_type = row_type.replace("put_", "")
+                    row_type = row_type.replace("_pct", "")
+
+                if not sort_types:
+                    if feat_type in customtypes:
+                        feat_type = customtypes[feat_type]
+                    elif use_saved_types and row_type is not None and row_type != "":
+                        feat_type = row_type
+
+                    if morph_only:
+                        if len(re.findall(r"^.*_[a-z]$", feat_type)) > 0:
+                            feat_type = feat_type[:-2]
+                else:
+                    common_type = ""
+                    if feat_type in customtypes:
+                        common_type = customtypes[feat_type]
+                    elif use_saved_types and row_type is not None and row_type != "":
+                        common_type = row_type
+                    elif pattern_only:
+                        common_type = "ph"
+
+                    if morph_only:
+                        if len(re.findall(r"^.*_[a-z]$", common_type)) > 0:
+                            common_type = common_type[:-2]
+                    if common_type != "":
+                        body2type[feat_type] = common_type
+
+                roiinfo = json.loads(row["info"])
+
+                totconn = 0
+                # restrict connections to provided ROIs
+                if roi_restriction is not None:
+                    for roi, val in roiinfo.items():
+                        if roi not in roi_restriction:
+                            continue
+                        totconn += val.get("post", 0)
+                else:
+                    totconn = row["weight"]
+
+                if totconn >= minconn:
+                    if row["body1"] not in io_list:
+                        io_list[row["body1"]] = {}
+
+                    if hack_test:
+                        # only take top 5 plus buffer
+                        if len(io_list[row["body1"]]) >= 5:
+                            count_list = []
+                            for name, count in io_list[row["body1"]].items():
+                                count_list.append(count)
+                            count_list.sort()
+                            count_list.reverse()
+                            if (count_list[4] - (count_list[4]**(1/2))) > totconn:
+                                continue
+
+                    if feat_type not in io_list[row["body1"]]:
+                        io_list[row["body1"]][feat_type] = 0
+                    io_list[row["body1"]][feat_type] += totconn
+                    common_io.add(feat_type)
+
+
+        def loop_body(currlist):
+            outputsquery = f"""\
+                WITH {currlist} AS TARGETS
+                MATCH(n :Neuron)-[x :ConnectsTo]->(m :Neuron)
+                WHERE n.bodyId in TARGETS AND m.status="Traced" AND x.weight >= {minconn}
+                RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight
+                ORDER BY weight DESC
+            """
+
+            inputsquery = f"""\
+                WITH {currlist} AS TARGETS
+                MATCH(n :Neuron)<-[x :ConnectsTo]-(m :Neuron)
+                WHERE n.bodyId in TARGETS AND m.status="Traced" AND x.weight >= {minconn}
+                RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight
+                ORDER BY weight DESC
+            """
             print(f"fetch batch {iter1}")
 
-            def collect_features(query, io_list, common_io):
-                res = npclient.fetch_custom(query)
-                for idx, row in res.iterrows():
-                    if row["body1"] == row["body2"]:
-                        continue
-                    feat_type = row["body2"]
-
-                    row_type = row["type"]
-                    if row_type is not None:
-                        row_type = row_type.replace("put_", "")
-                        row_type = row_type.replace("_pct", "")
-
-                    if not sort_types:
-                        if feat_type in customtypes:
-                            feat_type = customtypes[feat_type]
-                        elif use_saved_types and row_type is not None and row_type != "":
-                            feat_type = row_type
-
-                        if morph_only:
-                            if len(re.findall(r"^.*_[a-z]$", feat_type)) > 0:
-                                feat_type = feat_type[:-2]
-                    else:
-                        common_type = ""
-                        if feat_type in customtypes:
-                            common_type = customtypes[feat_type]
-                        elif use_saved_types and row_type is not None and row_type != "":
-                            common_type = row_type
-                        elif pattern_only:
-                            common_type = "ph"
-                        
-                        if morph_only:
-                            if len(re.findall(r"^.*_[a-z]$", common_type)) > 0:
-                                common_type = common_type[:-2]
-                        if common_type != "":
-                            body2type[feat_type] = common_type
-
-                    roiinfo = json.loads(row["info"])
-
-                    totconn = 0
-                    # restrict connections to provided ROIs
-                    if roi_restriction is not None:
-                        for roi, val in roiinfo.items():
-                            if roi not in roi_restriction:
-                                continue
-                            totconn += val.get("post", 0)
-                    else:
-                        totconn = row["weight"]
-
-                    if totconn >= minconn:
-                        if row["body1"] not in io_list:
-                            io_list[row["body1"]] = {}
-
-                        if hack_test:
-                            # only take top 5 plus buffer
-                            if len(io_list[row["body1"]]) >= 5:
-                                count_list = []
-                                for name, count in io_list[row["body1"]].items():
-                                    count_list.append(count)
-                                count_list.sort()
-                                count_list.reverse()
-                                if (count_list[4] - (count_list[4]**(1/2))) > totconn:
-                                    continue
-                            
-                        if feat_type not in io_list[row["body1"]]:
-                            io_list[row["body1"]][feat_type] = 0
-                        io_list[row["body1"]][feat_type] += totconn
-                        common_io.add(feat_type)
-    
+            outputs_list = {}
+            inputs_list = {}
+            commonout = set()
             collect_features(outputsquery, outputs_list, commonout)
             collect_features(inputsquery, inputs_list, commonin)
+            return outputs_list, inputs_list, commonout
+
+        for iter1 in range(0, len(neuronlist), 100):
+            currlist = neuronlist[iter1:iter1+100]
+            _outputs_list, _inputs_list, _commonout = loop_body(currlist)
+            outputs_list.update(_outputs_list)
+            inputs_list.update(_inputs_list)
+            commonout |= _commonout
+
+        #neuron_batches = iter_batches(neuronlist, 100)
+        #results = compute_parallel(loop_body, neuron_batches, processes=16, ordered=)
+
+        neuron_batches = [neuronlist[iter1:iter1+100] for iter1 in range(0, len(neuronlist), 100)]
+        pool = ThreadPool(16)
+        with pool:
+                results = tqdm(pool.map(loop_body, neuron_batches))
+
+        outputs_list_list, inputs_list_list, commonout_list = zip(*results)
+
+        outputs_list = {}
+        for d in outputs_list_list:
+            outputs_list.update(d)
+
+        inputs_list = {}
+        for d in inputs_list_list:
+            inputs_list.update(d)
+
+        commonout = set()
+        for s in commonout_list:
+            commonout |= s
 
         features_in = np.zeros((len(neuronlist), len(commonin)))
         features_out = np.zeros((len(neuronlist), len(commonout)))
-        
+
         def load_features(features_arr, io_list, common_io):
             for iter1, bodyid in enumerate(neuronlist):
                 featurevec = [0]*len(common_io)
@@ -694,14 +738,14 @@ def compute_connection_similarity_features(npclient, neuronlist,
                 else:
                     equivclasses[body2type[io]] = [key]
             featurenames.append(key)
-        features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames) 
+        features = pd.DataFrame(features_arr, index=neuronlist, columns=featurenames)
 
         # sort connections to neurons in the same class
         if len(equivclasses):
                 equivlists = []
                 for key, arr in equivclasses.items():
                     equivlists.append(arr)
-                
+
                 features = _sort_equiv_features(features, equivlists)
         return features
 
@@ -728,15 +772,15 @@ def find_max_differences(features, body1, body2, numfeatures = 10):
     b2feat = features.loc[body2]
 
     # find biggest differences and the largest combined value
-    diff = abs(b1feat-b2feat).sort_values(ascending=False)                                                           
-    comb = (b1feat+b2feat).sort_values(ascending=False)                                                              
+    diff = abs(b1feat-b2feat).sort_values(ascending=False)
+    comb = (b1feat+b2feat).sort_values(ascending=False)
 
-    if len(diff) < numfeatures//2:                                                                                   
+    if len(diff) < numfeatures//2:
         numfeatures = len(diff)//2
 
-    # restrict dataframe to the two relevant bodies                                                                          
+    # restrict dataframe to the two relevant bodies
     features_restr = features.loc[[body1, body2]]
-    
+
     diff_feat = abs(b1feat-b2feat)
     diff_feat.name = "diff"
     features_restr = features_restr.append(diff_feat)
@@ -744,8 +788,8 @@ def find_max_differences(features, body1, body2, numfeatures = 10):
     # restrict featuress to most interesting
     restr = list(diff.index[0:numfeatures])
     restr.extend(list(comb.index[0:numfeatures]))
-    features_restr = features_restr[restr]                                                                                                           
-    
+    features_restr = features_restr[restr]
+
     return features_restr
 
 def find_max_variance(features, numfeatures=40):
@@ -761,9 +805,9 @@ def find_max_variance(features, numfeatures=40):
     """
     min_val = features.min()
     max_val = features.max()
-    
+
     diff = abs(max_val-min_val).sort_values(ascending=False)
-    
+
     restr = list(diff.index[0:numfeatures])
     features_restr = features[restr]
 
@@ -788,7 +832,7 @@ def reduce_features(features, num_components=400):
     pca = PCA(n_components=pca_num)
     principalComponents = pca.fit_transform(features)
     print(f"PCA Explained Variance: {sum(pca.explained_variance_ratio_)}")
-    
+
     return pd.DataFrame(principalComponents, index=features.index.values.tolist())
 
 
@@ -827,7 +871,7 @@ def _combine_features(feature_list, wgt_list):
     if len(nfeature_list) == 0:
         raise RuntimeError("no features to combine")
     combofeatures = np.concatenate(tuple(nfeature_list), axis=1)
-    return pd.DataFrame(combofeatures, index=feature_list[0].index.values.tolist(), columns=featurenames) 
+    return pd.DataFrame(combofeatures, index=feature_list[0].index.values.tolist(), columns=featurenames)
 
 
 def _process_chunk(df_chunk_pair):
@@ -845,7 +889,7 @@ def _process_chunk(df_chunk_pair):
                 rowdict[label] = vals[idx2]
 
         for idx2, cname in enumerate(row.index.tolist()):
-            row[idx2] = rowdict[cname] 
+            row[idx2] = rowdict[cname]
     return df_chunk
 
 def _sort_equiv_features(features, equivlists):
@@ -865,5 +909,5 @@ def _sort_equiv_features(features, equivlists):
     from multiprocessing import Pool
     with Pool(processes=None) as pool:
         sorted_chunks = pool.map(_process_chunk, df_chunks)
-    
+
     return pd.concat(sorted_chunks)
