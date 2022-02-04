@@ -3,7 +3,7 @@
 Contains a set of functions for extracting features for a list of neurons.
 """
 
-from bokeh.plotting import figure, output_notebook, show, gridplot, reset_output, output_file
+from bokeh.plotting import figure, output_notebook, show, gridplot, row, reset_output, output_file
 from bokeh.models import ColumnDataSource, HoverTool
 from bokeh.palettes import Category20 as palette
 import itertools
@@ -124,8 +124,9 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
         p3.legend.click_policy="mute"
         p4.add_tools( HoverTool(tooltips= [("body id","@bodyid"),("type (gt)","@typegt"), ("type (cluster)","@cblast")]))
         p4.legend.click_policy="mute"
-        #grid = gridplot([[p, p2], [p3, p4]])
-        grid = gridplot([[p], [p3]])
+        # grid = gridplot([[p, p2], [p3, p4]])
+        # grid = gridplot([[p], [p3]])
+        grid = row(p, p3)
         show(grid)
     elif groundtruth is None and clusters is None:
         #grid = gridplot([[p, p2]])
