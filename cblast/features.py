@@ -515,7 +515,8 @@ def extract_projection_features(npclient, neuronlist,
 def compute_connection_similarity_features(npclient, neuronlist,
         use_saved_types=True, customtypes={}, postprocess=scaled_process(0.5, 0.5, [0.9,0.0,0.1]),
         sort_types=True, pattern_only=False, minconn=3, roi_restriction=None,
-        dump_replay=False, replay_data = None, morph_only=False, hack_test=False):
+        dump_replay=False, replay_data = None, morph_only=False, statuses=["Anchor"],
+        hack_test=False):
     """Computes an pairwise adjacency matrix for the given set of neurons.
 
     This function looks at inputs and outputs for the set of neurons.  The connections
@@ -545,11 +546,10 @@ def compute_connection_similarity_features(npclient, neuronlist,
         dump_replay (boolean): dumps features after parsing neuprint
         replay_data (tuple): data to enable replay
         morph_only (boolean): EXPERIMENTAL FEATURE only uses the root morpho type for each prior type
+        statuses (list of strings): only consider target neurons with the given statuses; default "Anchor" only
     Returns:
         dataframe: index: body ids; columns: different features 
     
-    Note: only connection to traced neurons are considered.
-
     """
 
     if pattern_only:
@@ -581,12 +581,22 @@ def compute_connection_similarity_features(npclient, neuronlist,
         for iter1 in range(0, len(neuronlist), 100):
             currlist = neuronlist[iter1:iter1+100]
             
-            outputsquery=f"WITH {currlist} AS TARGETS MATCH(n :Neuron)-[x :ConnectsTo]->(m :Neuron) WHERE n.bodyId in TARGETS AND m.status=\"Traced\" AND x.weight >= {minconn} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight ORDER BY weight DESC"
+            outputsquery=f"""\
+                WITH {currlist} AS TARGETS 
+                MATCH(n :Neuron)-[x :ConnectsTo]->(m :Neuron) 
+                WHERE n.bodyId in TARGETS AND m.status IN {statuses} AND x.weight >= {minconn} 
+                RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight 
+                ORDER BY weight DESC
+                """
 
-            inputsquery=f"WITH {currlist} AS TARGETS MATCH(n :Neuron)<-[x :ConnectsTo]-(m :Neuron) WHERE n.bodyId in TARGETS AND m.status=\"Traced\" AND x.weight >= {minconn} RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight ORDER BY weight DESC"
+            inputsquery=f"""\
+                WITH {currlist} AS TARGETS 
+                MATCH(n :Neuron)<-[x :ConnectsTo]-(m :Neuron) 
+                WHERE n.bodyId in TARGETS AND m.status IN {statuses} AND x.weight >= {minconn} 
+                RETURN n.bodyId AS body1, x.roiInfo AS info, m.bodyId AS body2, m.type AS type, x.weight AS weight 
+                ORDER BY weight DESC
+                """
          
-            print(f"fetch batch {iter1}")
-
             def collect_features(query, io_list, common_io):
                 res = npclient.fetch_custom(query)
                 for idx, row in res.iterrows():
