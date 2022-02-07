@@ -515,8 +515,7 @@ def extract_projection_features(npclient, neuronlist,
 def compute_connection_similarity_features(npclient, neuronlist,
         use_saved_types=True, customtypes={}, postprocess=scaled_process(0.5, 0.5, [0.9,0.0,0.1]),
         sort_types=True, pattern_only=False, minconn=3, roi_restriction=None,
-        dump_replay=False, replay_data = None, morph_only=False, statuses=["Anchor"],
-        hack_test=False):
+        dump_replay=False, replay_data = None, morph_only=False, statuses=["Anchor"]):
     """Computes an pairwise adjacency matrix for the given set of neurons.
 
     This function looks at inputs and outputs for the set of neurons.  The connections
@@ -649,17 +648,6 @@ def compute_connection_similarity_features(npclient, neuronlist,
                         if row["body1"] not in io_list:
                             io_list[row["body1"]] = {}
 
-                        if hack_test:
-                            # only take top 5 plus buffer
-                            if len(io_list[row["body1"]]) >= 5:
-                                count_list = []
-                                for name, count in io_list[row["body1"]].items():
-                                    count_list.append(count)
-                                count_list.sort()
-                                count_list.reverse()
-                                if (count_list[4] - (count_list[4]**(1/2))) > totconn:
-                                    continue
-                            
                         if feat_type not in io_list[row["body1"]]:
                             io_list[row["body1"]][feat_type] = 0
                         io_list[row["body1"]][feat_type] += totconn
