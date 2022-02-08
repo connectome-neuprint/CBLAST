@@ -5,7 +5,7 @@ with open('./README.md') as f:
     long_description = f.read()
 
 setup(name='CBLAST',
-      version='0.9',
+      version='0.10',
       author='Stephen Plaza',
       description='Tool for cluster neurons using connectivity',
       long_description=long_description,

@@ -3,7 +3,7 @@
 Contains a set of functions for extracting features for a list of neurons.
 """
 
-from bokeh.plotting import figure, output_notebook, show, gridplot, reset_output, output_file
+from bokeh.plotting import figure, output_notebook, show, gridplot, row, reset_output, output_file
 from bokeh.models import ColumnDataSource, HoverTool
 from bokeh.palettes import Category20 as palette
 import itertools
@@ -57,21 +57,23 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
     #colors has a list of colors which can be used in plots
     colors = itertools.cycle(palette[20])
 
+    # plot_tools = "pan,wheel_zoom,reset,save"
+    plot_tools = "pan,wheel_zoom,box_zoom,reset,save"
     if groundtruth is not None and clusters is not None:
-        p = figure(title="Ground truth(v1)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
-        p2 = figure(title="Ground truth(v2)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
-        p3 = figure(title="Clusters (v1)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
-        p4 = figure(title="Clusters (v2)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
+        p = figure(title="Ground truth(v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+        p2 = figure(title="Ground truth(v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+        p3 = figure(title="Clusters (v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+        p4 = figure(title="Clusters (v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
     elif groundtruth is not None or clusters is not None:
         if groundtruth is None:
-            p = figure(title="Clusters (v1)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
-            p2 = figure(title="Clusters (v2)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
+            p = figure(title="Clusters (v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+            p2 = figure(title="Clusters (v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
         else:
-            p = figure(title="Ground truth (v1)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
-            p2 = figure(title="Ground truth (v2)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
+            p = figure(title="Ground truth (v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+            p2 = figure(title="Ground truth (v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
     else:
-            p = figure(title="Features (v1)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
-            p2 = figure(title="Features (v2)", plot_width=800, plot_height=800, tools="pan,wheel_zoom,reset,save", active_scroll="wheel_zoom")
+            p = figure(title="Features (v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+            p2 = figure(title="Features (v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
 
     # create bokeh data sources
     coordtable = pd.DataFrame(data={"bodyid": features.index.values, "x": dembed[:,0], "y": dembed[:,1]})
@@ -124,8 +126,9 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
         p3.legend.click_policy="mute"
         p4.add_tools( HoverTool(tooltips= [("body id","@bodyid"),("type (gt)","@typegt"), ("type (cluster)","@cblast")]))
         p4.legend.click_policy="mute"
-        #grid = gridplot([[p, p2], [p3, p4]])
-        grid = gridplot([[p], [p3]])
+        # grid = gridplot([[p, p2], [p3, p4]])
+        # grid = gridplot([[p], [p3]])
+        grid = row(p, p3)
         show(grid)
     elif groundtruth is None and clusters is None:
         #grid = gridplot([[p, p2]])
