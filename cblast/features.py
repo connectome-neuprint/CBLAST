@@ -6,6 +6,7 @@ Contains a set of functions for extracting features for a list of neurons.
 import json
 import numpy as np
 import pandas as pd
+from multiprocessing import Pool
 from multiprocessing.pool import ThreadPool
 
 def save_features(features, filename):
@@ -516,7 +517,8 @@ def extract_projection_features(npclient, neuronlist,
 def compute_connection_similarity_features(npclient, neuronlist,
         use_saved_types=True, customtypes={}, postprocess=scaled_process(0.5, 0.5, [0.9,0.0,0.1]),
         sort_types=True, pattern_only=False, minconn=3, roi_restriction=None,
-        dump_replay=False, replay_data = None, morph_only=False, statuses=["Anchor"]):
+        dump_replay=False, replay_data = None, morph_only=False, statuses=["Anchor"],
+       numthreads=1):
     """Computes an pairwise adjacency matrix for the given set of neurons.
 
     This function looks at inputs and outputs for the set of neurons.  The connections
@@ -547,6 +549,7 @@ def compute_connection_similarity_features(npclient, neuronlist,
         replay_data (tuple): data to enable replay
         morph_only (boolean): EXPERIMENTAL FEATURE only uses the root morpho type for each prior type
         statuses (list of strings): only consider target neurons with the given statuses; default "Anchor" only
+        numthreads (int): number of threads to use in calculating features; default = 1 (no multithreading)
     Returns:
         dataframe: index: body ids; columns: different features
     """
@@ -659,20 +662,39 @@ def compute_connection_similarity_features(npclient, neuronlist,
             collect_features(inputsquery, inputs_list, commonin)
             return outputs_list, inputs_list, commonout
 
-        for iter1 in range(0, len(neuronlist), 100):
-            currlist = neuronlist[iter1:iter1+100]
+
+        # this should reproduce existing output
+        batchsize = 100
+        for iter1 in range(0, len(neuronlist), batchsize):
+            currlist = neuronlist[iter1:iter1 + batchsize]
             _outputs_list, _inputs_list, _commonout = loop_body(currlist)
             outputs_list.update(_outputs_list)
             inputs_list.update(_inputs_list)
             commonout |= _commonout
 
-        #neuron_batches = iter_batches(neuronlist, 100)
-        #results = compute_parallel(loop_body, neuron_batches, processes=16, ordered=)
+        # this is the incomplete parallel version
+        # neuron_batches = iter_batches(neuronlist, 100)
+        # this replaces Stuart's function from nuclease
+        neuron_batches = []
+        index = 0
+        while index < len(neuronlist):
+            neuron_batches.append(neuronlist[index: index + batchsize])
+            index += batchsize
 
-        neuron_batches = [neuronlist[iter1:iter1+100] for iter1 in range(0, len(neuronlist), 100)]
-        pool = ThreadPool(16)
+        # results = compute_parallel(loop_body, neuron_batches, processes=16, ordered=)
+        # this is also defined in nuclease
+
+
+
+        # neuron_batches = [neuronlist[iter1:iter1+100] for iter1 in range(0, len(neuronlist), 100)]
+        # pool = ThreadPool(numthreads)
+        pool = Pool(numthreads)
         with pool:
-                results = tqdm(pool.map(loop_body, neuron_batches))
+            # save the progress bar for later
+            # results = tqdm(pool.map(loop_body, neuron_batches))
+            # map() takes chunksize, we don't need to batch
+            results = pool.map(loop_body, neuron_batches)
+            # results = pool.map(loop_body, neuronlist, chunksize=batchsize)
 
         outputs_list_list, inputs_list_list, commonout_list = zip(*results)
 
