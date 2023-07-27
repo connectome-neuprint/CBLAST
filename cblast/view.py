@@ -60,20 +60,20 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
     # plot_tools = "pan,wheel_zoom,reset,save"
     plot_tools = "pan,wheel_zoom,box_zoom,reset,save"
     if groundtruth is not None and clusters is not None:
-        p = figure(title="Ground truth(v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
-        p2 = figure(title="Ground truth(v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
-        p3 = figure(title="Clusters (v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
-        p4 = figure(title="Clusters (v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+        p = figure(title="Ground truth(v1)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
+        p2 = figure(title="Ground truth(v2)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
+        p3 = figure(title="Clusters (v1)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
+        p4 = figure(title="Clusters (v2)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
     elif groundtruth is not None or clusters is not None:
         if groundtruth is None:
-            p = figure(title="Clusters (v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
-            p2 = figure(title="Clusters (v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+            p = figure(title="Clusters (v1)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
+            p2 = figure(title="Clusters (v2)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
         else:
-            p = figure(title="Ground truth (v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
-            p2 = figure(title="Ground truth (v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+            p = figure(title="Ground truth (v1)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
+            p2 = figure(title="Ground truth (v2)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
     else:
-            p = figure(title="Features (v1)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
-            p2 = figure(title="Features (v2)", plot_width=800, plot_height=800, tools=plot_tools, active_scroll="wheel_zoom")
+            p = figure(title="Features (v1)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
+            p2 = figure(title="Features (v2)", width=800, height=800, tools=plot_tools, active_scroll="wheel_zoom")
 
     # create bokeh data sources
     coordtable = pd.DataFrame(data={"bodyid": features.index.values, "x": dembed[:,0], "y": dembed[:,1]})
@@ -100,17 +100,17 @@ def features_scatterplot2D(features, clusters=None, groundtruth=None, htmlfile=N
 
     for celltype in gtypes:
         cval = next(colors)
-        p.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["typegt"] == celltype]))
-        p2.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typegt"] == celltype]))
+        p.square("x", "y", size=10, color=cval, alpha=0.8, legend_label=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["typegt"] == celltype]))
+        p2.square("x", "y", size=10, color=cval, alpha=0.8, legend_label=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["typegt"] == celltype]))
 
     for celltype in ctypes:
         cval = next(colors)
         if groundtruth is None:
-            p.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["cblast"] == celltype]))
-            p2.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["cblast"] == celltype]))
+            p.square("x", "y", size=10, color=cval, alpha=0.8, legend_label=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["cblast"] == celltype]))
+            p2.square("x", "y", size=10, color=cval, alpha=0.8, legend_label=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["cblast"] == celltype]))
         else:
-            p3.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["cblast"] == celltype]))
-            p4.square("x", "y", size=10, color=cval, alpha=0.8, legend=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["cblast"] == celltype]))
+            p3.square("x", "y", size=10, color=cval, alpha=0.8, legend_label=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable.loc[coordtable["cblast"] == celltype]))
+            p4.square("x", "y", size=10, color=cval, alpha=0.8, legend_label=str(celltype), muted_color=cval, muted_alpha=0.1, source=ColumnDataSource(coordtable2.loc[coordtable2["cblast"] == celltype]))
 
     if groundtruth is None and clusters is None:
         cval = next(colors)
